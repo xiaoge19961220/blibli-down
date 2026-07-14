@@ -1,0 +1,6 @@
+{
+  "name": "Bilibili Collection Downloader",
+  "description": "A powerful full-stack web application to download Bilibili video collections concurrently, showing real-time progress and supporting robust file management and inline streaming.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
