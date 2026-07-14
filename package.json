@@ -6,7 +6,7 @@
   "main": "electron-main.cjs",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ge1451778027/blibli-down.git"
+    "url": "git+https://github.com/xiaoge19961220/blibli-down.git"
   },
   "scripts": {
     "dev": "tsx server.ts",
@@ -24,7 +24,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ge1451778027",
+        "owner": "xiaoge19961220",
         "repo": "blibli-down"
       }
     ],
