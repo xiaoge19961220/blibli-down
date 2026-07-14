@@ -61,6 +61,54 @@ export default function LoginSettings({
 }: LoginSettingsProps) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   
+  // Bilibili login status states
+  const [biliUser, setBiliUser] = useState<{
+    uname: string;
+    face: string;
+    vipStatus: number;
+    vipType: number;
+    mid: number;
+    isLogin: boolean;
+  } | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+
+  React.useEffect(() => {
+    if (savedSessdata) {
+      checkLoginStatus();
+    } else {
+      setBiliUser(null);
+    }
+  }, [savedSessdata]);
+
+  const checkLoginStatus = async () => {
+    setCheckingStatus(true);
+    setStatusMessage('');
+    try {
+      const res = await fetch('/api/login/status');
+      const data = await res.json();
+      if (data.success && data.isLogin) {
+        setBiliUser({
+          uname: data.uname,
+          face: data.face,
+          vipStatus: data.vipStatus,
+          vipType: data.vipType,
+          mid: data.mid,
+          isLogin: true
+        });
+        setStatusMessage(data.message || '凭证状态良好。');
+      } else {
+        setBiliUser(null);
+        setStatusMessage(data.message || '登录凭证无效或已过期，请重新登录。');
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch login status:', err);
+      setStatusMessage('无法连接服务，请检查网络。');
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+  
   // Online upgrade interactive states
   const [currentVersion, setCurrentVersion] = useState('v1.0.0');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'completed'>('idle');
@@ -117,17 +165,67 @@ export default function LoginSettings({
         {/* QR Core Container */}
         <div className="py-6 flex flex-col items-center justify-center bg-[#0F1115] border border-[#22252E] rounded-2xl relative overflow-hidden min-h-[250px]">
           {qrLoginStatus === 'idle' ? (
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-bili-pink/10 flex items-center justify-center mx-auto text-bili-pink border border-bili-pink/20">
-                <QrCode className="w-8 h-8" />
-              </div>
+            <div className="text-center space-y-4 w-full px-6 flex flex-col items-center">
+              {savedSessdata && biliUser ? (
+                <div className="w-full max-w-sm bg-[#161922] border border-[#262A37] rounded-2xl p-4 flex flex-col space-y-3 shadow-inner">
+                  <div className="flex items-center space-x-3 text-left">
+                    <img 
+                      src={biliUser.face} 
+                      alt={biliUser.uname} 
+                      className="w-12 h-12 rounded-full border border-bili-pink/30 object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-white font-bold text-xs truncate block">{biliUser.uname}</span>
+                        {biliUser.vipStatus === 1 ? (
+                          <span className="px-1.5 py-0.5 text-[8px] font-bold bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded uppercase tracking-wider scale-95 origin-left">
+                            {biliUser.vipType === 2 ? '年度大会员' : '大会员'}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[8px] font-bold bg-slate-600 text-slate-300 rounded scale-95 origin-left">
+                            普通用户
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">UID: {biliUser.mid}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between border-t border-[#232734] pt-2 text-[10px]">
+                    <span className="text-slate-400 flex items-center space-x-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${checkingStatus ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                      <span className="truncate max-w-[200px]">{statusMessage || '凭证验证通过'}</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={checkingStatus}
+                      onClick={checkLoginStatus}
+                      className="text-bili-pink hover:text-bili-pink/80 flex items-center space-x-1 font-semibold disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${checkingStatus ? 'animate-spin' : ''}`} />
+                      <span>检测状态</span>
+                    </button>
+                  </div>
+                </div>
+              ) : savedSessdata && checkingStatus ? (
+                <div className="flex flex-col items-center justify-center space-y-2 py-4">
+                  <Loader2 className="w-6 h-6 text-bili-pink animate-spin" />
+                  <span className="text-xs text-slate-400 font-mono">正在检测 B 站账号登录状态...</span>
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-bili-pink/10 flex items-center justify-center mx-auto text-bili-pink border border-bili-pink/20">
+                  <QrCode className="w-8 h-8" />
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={onGenerateQR}
                 className="px-5 py-2.5 bg-bili-pink hover:bg-bili-pink/90 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow-md shadow-bili-pink/10 transition cursor-pointer select-none"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>立即获取登录二维码</span>
+                <span>{savedSessdata ? '重新获取登录二维码' : '立即获取登录二维码'}</span>
               </button>
             </div>
           ) : (

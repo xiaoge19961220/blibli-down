@@ -509,6 +509,7 @@ export default function App() {
                   onRedownload={handleRedownloadTask}
                   onRemove={handleRemoveTask}
                   onCancelAll={handleCancelAll}
+                  downloadsDir={downloadsDir}
                 />
               )}
 

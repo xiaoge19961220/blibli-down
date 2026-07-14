@@ -8,3 +8,5 @@ coverage/
 !.env.example
 .idea/
 .vscode/
+downloads/
+dist-desktop/

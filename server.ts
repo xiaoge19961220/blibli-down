@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
@@ -12,6 +11,7 @@ const PORT = 3000;
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
 let sessdata = process.env.SESSDATA || '';
+let bili_jct = '';
 let concurrencyLimit = 2;
 let downloadsDir = 'downloads';
 
@@ -20,6 +20,7 @@ function loadSettings() {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
       if (data.sessdata !== undefined) sessdata = data.sessdata;
+      if (data.bili_jct !== undefined) bili_jct = data.bili_jct;
       if (data.concurrencyLimit !== undefined) concurrencyLimit = data.concurrencyLimit;
       if (data.downloadsDir !== undefined) downloadsDir = data.downloadsDir;
     } catch (err) {
@@ -34,6 +35,7 @@ function saveSettings() {
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify({
       sessdata,
+      bili_jct,
       concurrencyLimit,
       downloadsDir
     }, null, 2), 'utf8');
@@ -604,6 +606,56 @@ app.post('/api/tasks/remove', (req, res) => {
   }
 });
 
+// 8.5. Export/Extract a downloaded collection to a custom target directory
+app.post('/api/tasks/export', (req, res) => {
+  const { videoTitle, bvid, targetDir } = req.body;
+  if (!targetDir) {
+    return res.status(400).json({ error: 'targetDir parameter is required' });
+  }
+
+  const safeTitle = (videoTitle || bvid || '').replace(/[\\/:*?"<>|]/g, '_').trim();
+  if (!safeTitle) {
+    return res.status(400).json({ error: 'videoTitle or bvid is required' });
+  }
+
+  const sourceDir = path.join(getDownloadsDir(), safeTitle);
+  if (!fs.existsSync(sourceDir)) {
+    return res.status(404).json({ error: `未找到该合集的本地下载文件夹。可能是您尚未下载完成或文件已被手动删除。\n路径：${sourceDir}` });
+  }
+
+  try {
+    let resolvedTargetDir = targetDir;
+    if (!path.isAbsolute(resolvedTargetDir)) {
+      resolvedTargetDir = path.resolve(process.cwd(), resolvedTargetDir);
+    }
+    
+    const finalTargetDir = path.join(resolvedTargetDir, safeTitle);
+    if (!fs.existsSync(finalTargetDir)) {
+      fs.mkdirSync(finalTargetDir, { recursive: true });
+    }
+
+    const files = fs.readdirSync(sourceDir);
+    let copiedCount = 0;
+    for (const file of files) {
+      if (file.endsWith('.mp4') && !file.endsWith('.tmp')) {
+        const srcFile = path.join(sourceDir, file);
+        const destFile = path.join(finalTargetDir, file);
+        fs.copyFileSync(srcFile, destFile);
+        copiedCount++;
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `成功导出 ${copiedCount} 个视频文件到指定目录。`,
+      path: finalTargetDir
+    });
+  } catch (err: any) {
+    console.error('Failed to export collection:', err);
+    res.status(500).json({ error: err.message || '导出过程中发生系统错误，请检查路径权限或磁盘空间。' });
+  }
+});
+
 // Helper for scanning directories recursively
 function getFilesRecursively(dir: string, baseDir: string = dir): any[] {
   let results: any[] = [];
@@ -779,8 +831,12 @@ app.get('/api/login/qr/poll', async (req, res) => {
       try {
         const parsedUrl = new URL(data.data.url);
         const extractedSessdata = parsedUrl.searchParams.get('SESSDATA');
+        const extractedBiliJct = parsedUrl.searchParams.get('bili_jct');
         if (extractedSessdata) {
           sessdata = extractedSessdata.trim();
+          if (extractedBiliJct) {
+            bili_jct = extractedBiliJct.trim();
+          }
           saveSettings();
           console.log('Successfully logged in and saved SESSDATA through Bilibili QR code scan!');
         }
@@ -792,6 +848,45 @@ app.get('/api/login/qr/poll', async (req, res) => {
     res.json(data.data);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to poll login state' });
+  }
+});
+
+// 10.5. Check current SESSDATA validity and retrieve profile information
+app.get('/api/login/status', async (req, res) => {
+  if (!sessdata) {
+    return res.json({ success: false, isLogin: false, message: '尚未登录，请扫码登录或保存您的SESSDATA。' });
+  }
+
+  try {
+    const navResponse = await fetch('https://api.bilibili.com/x/web-interface/nav', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.bilibili.com',
+        'Cookie': `SESSDATA=${sessdata}`
+      }
+    });
+    const json = await navResponse.json() as any;
+    
+    if (json.code === 0 && json.data && json.data.isLogin) {
+      return res.json({
+        success: true,
+        isLogin: true,
+        uname: json.data.uname,
+        face: json.data.face,
+        vipStatus: json.data.vipStatus, // 1: active, 0: inactive
+        vipType: json.data.vipType, // 0: none, 1: monthly, 2: yearly
+        mid: json.data.mid,
+        message: '凭证状态良好（拥有 180 天超长有效期，请勿在其他客户端退出登录以防凭证被官方吊销）。'
+      });
+    } else {
+      return res.json({
+        success: false,
+        isLogin: false,
+        message: json.message || '登录凭证已失效或过期，请重新获取。'
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || '网络通信异常，请检查本地网络连接' });
   }
 });
 
@@ -1000,6 +1095,7 @@ app.get('/api/search', async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
