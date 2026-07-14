@@ -36,3 +36,4 @@ jobs:
           npx electron-builder --publish always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

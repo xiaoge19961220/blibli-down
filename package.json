@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "main": "electron-main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ge1451778027/blibli-down.git"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
@@ -19,7 +23,9 @@
     "asar": true,
     "publish": [
       {
-        "provider": "github"
+        "provider": "github",
+        "owner": "ge1451778027",
+        "repo": "blibli-down"
       }
     ],
     "directories": {
