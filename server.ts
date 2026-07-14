@@ -781,6 +781,7 @@ app.get('/api/login/qr/poll', async (req, res) => {
         const extractedSessdata = parsedUrl.searchParams.get('SESSDATA');
         if (extractedSessdata) {
           sessdata = extractedSessdata.trim();
+          saveSettings();
           console.log('Successfully logged in and saved SESSDATA through Bilibili QR code scan!');
         }
       } catch (parseErr) {
@@ -892,6 +893,105 @@ app.post('/api/dirs/create', (req, res) => {
     res.json({ success: true, path: newDirPath });
   } catch (err: any) {
     res.status(500).json({ error: err.message || '无法创建目录' });
+  }
+});
+
+
+// 13. Search Bilibili Videos
+let cachedBuvid3 = '';
+let cachedBuvid4 = '';
+
+async function ensureBuvid() {
+  if (cachedBuvid3) return { buvid3: cachedBuvid3, buvid4: cachedBuvid4 };
+  try {
+    const res = await fetch('https://api.bilibili.com/x/frontend/finger/spi', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.bilibili.com'
+      }
+    });
+    if (res.ok) {
+      const json = await res.json() as any;
+      if (json.code === 0 && json.data) {
+        cachedBuvid3 = json.data.b_3 || '';
+        cachedBuvid4 = json.data.b_4 || '';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch anonymous buvid:', err);
+  }
+  return { buvid3: cachedBuvid3, buvid4: cachedBuvid4 };
+}
+
+app.get('/api/search', async (req, res) => {
+  const keyword = (req.query.keyword as string || '').trim();
+  if (!keyword) {
+    return res.json({ success: true, results: [] });
+  }
+
+  try {
+    const { buvid3, buvid4 } = await ensureBuvid();
+    
+    // Construct cookie string
+    let cookieStr = '';
+    if (sessdata) {
+      cookieStr += `SESSDATA=${sessdata}; `;
+    }
+    if (buvid3) {
+      cookieStr += `buvid3=${buvid3}; `;
+    }
+    if (buvid4) {
+      cookieStr += `buvid4=${buvid4}; `;
+    }
+
+    const searchUrl = `https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=${encodeURIComponent(keyword)}&page=1`;
+    
+    const searchRes = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://search.bilibili.com',
+        'Cookie': cookieStr.trim()
+      }
+    });
+
+    const json = await searchRes.json() as any;
+    
+    if (json.code !== 0) {
+      console.warn('Bilibili search returned code:', json.code, json.message);
+      return res.json({ 
+        success: false, 
+        error: json.message || 'Bilibili 搜索接口返回错误',
+        code: json.code,
+        results: [] 
+      });
+    }
+
+    const rawList = json.data?.result || [];
+    const results = rawList.map((item: any) => {
+      // Strip html tags like <em class="keyword">Vite</em> from title
+      const cleanTitle = (item.title || '').replace(/<[^>]+>/g, '');
+      const picUrl = item.pic ? (item.pic.startsWith('//') ? 'https:' + item.pic : item.pic) : '';
+      
+      return {
+        bvid: item.bvid,
+        title: cleanTitle,
+        pic: picUrl,
+        author: item.author,
+        duration: item.duration, // e.g. "12:34" or "754"
+        play: item.play, // number
+        description: item.description,
+        pubdate: item.pubdate,
+        favorites: item.favorites,
+        review: item.review
+      };
+    });
+
+    res.json({
+      success: true,
+      results
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || '搜索接口发生内部错误', results: [] });
   }
 });
 

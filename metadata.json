@@ -1,6 +1,6 @@
 {
-  "name": "Bilibili Collection Downloader",
-  "description": "A powerful full-stack web application to download Bilibili video collections concurrently, showing real-time progress and supporting robust file management and inline streaming.",
+  "name": "BiliArchiver",
+  "description": "BiliArchiver 是一款基于 Electron + React + Express 的 B 站视频/合集多线程智能归档工具，支持在线升级、智能搜索、批量提取以及本地离线影音管理。",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

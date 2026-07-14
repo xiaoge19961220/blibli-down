@@ -10,8 +10,8 @@ import {
 } from 'lucide-react';
 
 interface NavigationProps {
-  activeTab: 'extractor' | 'downloads' | 'library' | 'settings';
-  setActiveTab: (tab: 'extractor' | 'downloads' | 'library' | 'settings') => void;
+  activeTab: 'search' | 'extractor' | 'downloads' | 'library' | 'settings';
+  setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'library' | 'settings') => void;
   activeDownloadsCount: number;
   completedFilesCount: number;
   hasSessdata: boolean;
@@ -26,9 +26,15 @@ export default function Navigation({
 }: NavigationProps) {
   const navItems = [
     { 
+      id: 'search' as const, 
+      label: '视频搜索', 
+      icon: Search,
+      badge: null 
+    },
+    { 
       id: 'extractor' as const, 
       label: '视频提取', 
-      icon: Search,
+      icon: Sparkles,
       badge: null 
     },
     { 

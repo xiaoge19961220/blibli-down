@@ -42,7 +42,7 @@ function createWindow() {
     height: 830,
     minWidth: 1024,
     minHeight: 700,
-    title: "Bento Pro - 极速本地影音管理器",
+    title: "BiliArchiver - 哔哩智能归档器",
     show: false,
     backgroundColor: '#0A0C10',
     webPreferences: {

@@ -5,6 +5,7 @@ import { PageInfo, VideoInfo, DownloadTask, FileItem, SettingsInfo } from './typ
 
 // Modular Page Components
 import Navigation from './components/Navigation';
+import VideoSearch from './components/VideoSearch';
 import VideoExtractor from './components/VideoExtractor';
 import DownloadManager from './components/DownloadManager';
 import VideoLibrary from './components/VideoLibrary';
@@ -12,7 +13,7 @@ import LoginSettings from './components/LoginSettings';
 
 export default function App() {
   // Navigation active tab
-  const [activeTab, setActiveTab] = useState<'extractor' | 'downloads' | 'library' | 'settings'>('extractor');
+  const [activeTab, setActiveTab] = useState<'search' | 'extractor' | 'downloads' | 'library' | 'settings'>('search');
 
   // Input video metadata URL or BVID
   const [urlInput, setUrlInput] = useState('BV1MTQAY4EdP');
@@ -121,9 +122,10 @@ export default function App() {
   };
 
   // Fetch Bilibili Video details
-  const handleParse = async (e?: React.FormEvent) => {
+  const handleParse = async (e?: React.FormEvent, customBvid?: string) => {
     if (e) e.preventDefault();
-    if (!urlInput.trim()) return;
+    const bvidToParse = (customBvid || urlInput).trim();
+    if (!bvidToParse) return;
 
     setLoadingInfo(true);
     setErrorInfo(null);
@@ -131,7 +133,7 @@ export default function App() {
     setSelectedPages([]);
 
     try {
-      const res = await fetch(`/api/video-info?urlOrBvid=${encodeURIComponent(urlInput.trim())}`);
+      const res = await fetch(`/api/video-info?urlOrBvid=${encodeURIComponent(bvidToParse)}`);
       const data = await res.json();
       
       if (!res.ok) {
@@ -148,6 +150,13 @@ export default function App() {
     } finally {
       setLoadingInfo(false);
     }
+  };
+
+  // Jump from Search directly to Extractor & trigger parsing
+  const handleExtractFromSearch = (bvid: string) => {
+    setUrlInput(bvid);
+    setActiveTab('extractor');
+    handleParse(undefined, bvid);
   };
 
   // Generate Bilibili Login QR Code
@@ -437,7 +446,7 @@ export default function App() {
         <header className="border-b border-[#22252E] bg-bili-dark/80 backdrop-blur sticky top-0 z-20 px-6 py-4 flex items-center justify-between">
           <div className="space-y-0.5">
             <h1 className="text-base font-bold text-white flex items-center space-x-2">
-              <span>{activeTab === 'extractor' ? '视频提取与解析' : activeTab === 'downloads' ? '多线程下载管理' : activeTab === 'library' ? '本地合集媒体库' : '设置与身份凭证'}</span>
+              <span>{activeTab === 'search' ? '哔哩哔哩视频搜索' : activeTab === 'extractor' ? '视频提取与解析' : activeTab === 'downloads' ? '多线程下载管理' : activeTab === 'library' ? '本地合集媒体库' : '设置与身份凭证'}</span>
               <span className="text-[9px] font-mono font-bold bg-bili-pink/10 text-bili-pink border border-bili-pink/20 px-2 py-0.5 rounded uppercase">
                 {activeTab}
               </span>
@@ -468,6 +477,13 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="h-full"
             >
+              {activeTab === 'search' && (
+                <VideoSearch 
+                  onExtract={handleExtractFromSearch}
+                  showToast={showToast}
+                />
+              )}
+
               {activeTab === 'extractor' && (
                 <VideoExtractor 
                   urlInput={urlInput}
