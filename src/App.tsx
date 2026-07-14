@@ -218,15 +218,15 @@ export default function App() {
           setQrLoginStatus('waiting_confirm');
           setQrStatusText('已扫码，请在手机端确认登录');
         } else if (code === 86101) {
+          setQrLoginStatus('waiting_scan');
+          setQrStatusText('请使用哔哩哔哩App扫码登录');
+        } else if (code === 86090) {
           setQrLoginStatus('expired');
           setQrStatusText('二维码已过期，请重新生成');
           if (qrPollIntervalRef.current) {
             clearInterval(qrPollIntervalRef.current);
             qrPollIntervalRef.current = null;
           }
-        } else if (code === 86090) {
-          setQrLoginStatus('waiting_scan');
-          setQrStatusText('请使用哔哩哔哩App扫码登录');
         }
       } catch (err) {
         console.error('Polling QR status error:', err);
