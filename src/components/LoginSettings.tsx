@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   QrCode, 
   Settings, 
@@ -9,9 +9,11 @@ import {
   CheckCircle2, 
   AlertCircle, 
   RefreshCw,
-  Clock
+  Clock,
+  FolderOpen
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import DirectoryPickerModal from './DirectoryPickerModal';
 
 interface LoginSettingsProps {
   sessdata: string;
@@ -19,6 +21,8 @@ interface LoginSettingsProps {
   savedSessdata: string | null;
   concurrency: number;
   setConcurrency: (val: number) => void;
+  downloadsDir: string;
+  setDownloadsDir: (val: string) => void;
   savingSettings: boolean;
   onSaveSettings: (e: React.FormEvent) => void;
   onLogout: () => void;
@@ -36,6 +40,8 @@ export default function LoginSettings({
   savedSessdata,
   concurrency,
   setConcurrency,
+  downloadsDir,
+  setDownloadsDir,
   savingSettings,
   onSaveSettings,
   onLogout,
@@ -44,6 +50,7 @@ export default function LoginSettings({
   qrStatusText,
   onGenerateQR
 }: LoginSettingsProps) {
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -202,6 +209,49 @@ export default function LoginSettings({
               value={sessdata}
               onChange={(e) => setSessdata(e.target.value)}
               className="w-full bg-[#0F1115] border border-[#262A35] rounded-xl px-3 py-3 text-xs text-white focus:border-bili-pink focus:outline-none placeholder-slate-600 font-mono"
+            />
+          </div>
+
+          {/* Downloads Directory Input */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                下载保存目录
+              </label>
+              <span className="text-[9px] font-semibold text-slate-500">
+                支持绝对路径或相对路径
+              </span>
+            </div>
+            <div className="flex space-x-2">
+              <input 
+                type="text"
+                placeholder="默认目录: downloads"
+                value={downloadsDir}
+                onChange={(e) => setDownloadsDir(e.target.value)}
+                className="flex-1 bg-[#0F1115] border border-[#262A35] rounded-xl px-3 py-3 text-xs text-white focus:border-bili-pink focus:outline-none placeholder-slate-600 font-mono"
+              />
+              <button 
+                type="button"
+                onClick={() => setIsPickerOpen(true)}
+                className="px-3.5 bg-[#1A1D23] hover:bg-bili-pink/10 hover:text-bili-pink border border-[#2B2E37] hover:border-bili-pink/30 rounded-xl text-xs font-bold text-slate-300 flex items-center space-x-1.5 transition cursor-pointer select-none active:scale-95 shrink-0"
+                title="可视化选择本地目录"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>选择目录</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-snug">
+              支持直接输入绝对路径（如 <code className="text-[9px] font-mono text-slate-400">/Users/mac/Downloads</code> 或 <code className="text-[9px] font-mono text-slate-400">D:\downloads</code>）或点击右侧按钮进行可视化浏览与新建。
+            </p>
+
+            <DirectoryPickerModal 
+              isOpen={isPickerOpen}
+              onClose={() => setIsPickerOpen(false)}
+              onSelect={(selectedPath) => {
+                setDownloadsDir(selectedPath);
+                setIsPickerOpen(false);
+              }}
+              initialPath={downloadsDir}
             />
           </div>
 

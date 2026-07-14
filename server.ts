@@ -9,11 +9,50 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const DOWNLOADS_DIR = path.join(process.cwd(), 'downloads');
+const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
-// Ensure downloads directory exists
-if (!fs.existsSync(DOWNLOADS_DIR)) {
-  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+let sessdata = process.env.SESSDATA || '';
+let concurrencyLimit = 2;
+let downloadsDir = 'downloads';
+
+function loadSettings() {
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      if (data.sessdata !== undefined) sessdata = data.sessdata;
+      if (data.concurrencyLimit !== undefined) concurrencyLimit = data.concurrencyLimit;
+      if (data.downloadsDir !== undefined) downloadsDir = data.downloadsDir;
+    } catch (err) {
+      console.error('Failed to parse config.json, using defaults:', err);
+    }
+  } else {
+    saveSettings();
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({
+      sessdata,
+      concurrencyLimit,
+      downloadsDir
+    }, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save config.json:', err);
+  }
+}
+
+loadSettings();
+
+function getDownloadsDir() {
+  let dir = downloadsDir || 'downloads';
+  if (!path.isAbsolute(dir)) {
+    dir = path.resolve(process.cwd(), dir);
+  }
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
 }
 
 app.use(express.json());
@@ -40,8 +79,6 @@ interface DownloadTask {
 const tasks = new Map<string, DownloadTask>();
 const activeRequests = new Map<string, AbortController>();
 let activeCount = 0;
-let concurrencyLimit = 2;
-let sessdata = process.env.SESSDATA || '';
 
 // Process the download queue
 async function processQueue() {
@@ -123,7 +160,7 @@ async function startDownload(task: DownloadTask) {
 
   // Group under a folder named after the video's general title or bvid
   const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
-  const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+  const folderDir = path.join(getDownloadsDir(), safeTitle);
   
   // Safe filename
   const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
@@ -451,7 +488,7 @@ app.post('/api/tasks/redownload', (req, res) => {
 
   // Attempt to delete any half-finished/completed files
   const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
-  const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+  const folderDir = path.join(getDownloadsDir(), safeTitle);
   const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
   const filename = `${task.page}_${safePart}.mp4`;
   const filePath = path.join(folderDir, filename);
@@ -533,7 +570,7 @@ app.post('/api/tasks/remove', (req, res) => {
 
     if (deleteFile) {
       const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
-      const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+      const folderDir = path.join(getDownloadsDir(), safeTitle);
       const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
       const filename = `${task.page}_${safePart}.mp4`;
       const filePath = path.join(folderDir, filename);
@@ -618,7 +655,7 @@ function getFilesRecursively(dir: string, baseDir: string = dir): any[] {
 // 9. List downloaded files (recursively scans directory!)
 app.get('/api/files', (req, res) => {
   try {
-    const mp4Files = getFilesRecursively(DOWNLOADS_DIR);
+    const mp4Files = getFilesRecursively(getDownloadsDir());
     mp4Files.sort((a, b) => b.createdAt - a.createdAt);
     res.json({ files: mp4Files });
   } catch (err: any) {
@@ -632,14 +669,14 @@ app.get('/api/files/stream', (req, res) => {
     return res.status(400).send('file parameter is required');
   }
 
-  const filePath = path.join(DOWNLOADS_DIR, file);
+  const filePath = path.join(getDownloadsDir(), file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).send('File not found');
   }
 
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(path.resolve(DOWNLOADS_DIR))) {
+  if (!resolvedPath.startsWith(path.resolve(getDownloadsDir()))) {
     return res.status(403).send('Forbidden');
   }
 
@@ -653,14 +690,14 @@ app.get('/api/files/download', (req, res) => {
     return res.status(400).send('file parameter is required');
   }
 
-  const filePath = path.join(DOWNLOADS_DIR, file);
+  const filePath = path.join(getDownloadsDir(), file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).send('File not found');
   }
 
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(path.resolve(DOWNLOADS_DIR))) {
+  if (!resolvedPath.startsWith(path.resolve(getDownloadsDir()))) {
     return res.status(403).send('Forbidden');
   }
 
@@ -674,14 +711,14 @@ app.delete('/api/files', (req, res) => {
     return res.status(400).json({ error: 'file parameter is required' });
   }
 
-  const filePath = path.join(DOWNLOADS_DIR, file);
+  const filePath = path.join(getDownloadsDir(), file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }
 
   const resolvedPath = path.resolve(filePath);
-  if (!resolvedPath.startsWith(path.resolve(DOWNLOADS_DIR))) {
+  if (!resolvedPath.startsWith(path.resolve(getDownloadsDir()))) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -689,7 +726,7 @@ app.delete('/api/files', (req, res) => {
     fs.unlinkSync(filePath);
     // Also recursively clean up parent folder if empty
     const parentDir = path.dirname(filePath);
-    if (parentDir !== DOWNLOADS_DIR && fs.existsSync(parentDir)) {
+    if (parentDir !== getDownloadsDir() && fs.existsSync(parentDir)) {
       const remaining = fs.readdirSync(parentDir);
       if (remaining.length === 0) {
         fs.rmdirSync(parentDir);
@@ -762,12 +799,13 @@ app.get('/api/settings', (req, res) => {
   res.json({
     sessdata: sessdata ? '******' + sessdata.slice(-4) : '',
     hasSessdata: !!sessdata,
-    concurrencyLimit
+    concurrencyLimit,
+    downloadsDir: downloadsDir || 'downloads'
   });
 });
 
 app.post('/api/settings', (req, res) => {
-  const { sessdata: newSessdata, concurrency } = req.body;
+  const { sessdata: newSessdata, concurrency, downloadsDir: newDownloadsDir } = req.body;
   if (newSessdata !== undefined) {
     // If user inputs '******', keep the old one, else set new
     if (newSessdata && !newSessdata.startsWith('******')) {
@@ -779,12 +817,82 @@ app.post('/api/settings', (req, res) => {
   if (concurrency !== undefined && typeof concurrency === 'number') {
     concurrencyLimit = Math.max(1, Math.min(10, concurrency));
   }
+  if (newDownloadsDir !== undefined && typeof newDownloadsDir === 'string') {
+    downloadsDir = newDownloadsDir.trim() || 'downloads';
+  }
+  
+  saveSettings();
+
   res.json({
     success: true,
     sessdata: sessdata ? '******' + sessdata.slice(-4) : '',
     hasSessdata: !!sessdata,
-    concurrencyLimit
+    concurrencyLimit,
+    downloadsDir: downloadsDir || 'downloads'
   });
+});
+
+
+// 12. Directory Browsing API
+app.get('/api/dirs/browse', (req, res) => {
+  try {
+    let targetPath = (req.query.path as string) || '';
+    if (!targetPath) {
+      targetPath = process.cwd();
+    } else {
+      if (!path.isAbsolute(targetPath)) {
+        targetPath = path.resolve(process.cwd(), targetPath);
+      }
+    }
+
+    if (!fs.existsSync(targetPath)) {
+      return res.status(404).json({ error: '目录不存在' });
+    }
+
+    const stat = fs.statSync(targetPath);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: '该路径不是一个目录' });
+    }
+
+    const items = fs.readdirSync(targetPath, { withFileTypes: true });
+    const subdirs = items
+      .filter(item => item.isDirectory() && !item.name.startsWith('.'))
+      .map(item => item.name)
+      .sort();
+
+    const parentPath = path.dirname(targetPath);
+
+    res.json({
+      currentPath: targetPath,
+      parentPath: parentPath === targetPath ? null : parentPath,
+      subdirs
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '无法浏览目录' });
+  }
+});
+
+app.post('/api/dirs/create', (req, res) => {
+  try {
+    const { parentPath, folderName } = req.body;
+    if (!parentPath || !folderName) {
+      return res.status(400).json({ error: '缺少必需参数' });
+    }
+
+    let targetParent = parentPath;
+    if (!path.isAbsolute(targetParent)) {
+      targetParent = path.resolve(process.cwd(), targetParent);
+    }
+
+    const newDirPath = path.join(targetParent, folderName.replace(/[\\/:*?"<>|]/g, '_'));
+    if (!fs.existsSync(newDirPath)) {
+      fs.mkdirSync(newDirPath, { recursive: true });
+    }
+
+    res.json({ success: true, path: newDirPath });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '无法创建目录' });
+  }
 });
 
 

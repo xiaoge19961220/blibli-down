@@ -36,6 +36,7 @@ export default function App() {
   const [sessdata, setSessdata] = useState('');
   const [savedSessdata, setSavedSessdata] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [downloadsDir, setDownloadsDir] = useState('downloads');
   
   // QR Login state
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
@@ -80,6 +81,9 @@ export default function App() {
         const data = await res.json() as SettingsInfo;
         setSavedSessdata(data.hasSessdata);
         setConcurrency(data.concurrencyLimit);
+        if (data.downloadsDir) {
+          setDownloadsDir(data.downloadsDir);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch settings:', err);
@@ -229,12 +233,15 @@ export default function App() {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessdata, concurrency })
+        body: JSON.stringify({ sessdata, concurrency, downloadsDir })
       });
       if (res.ok) {
         const data = await res.json();
         setSavedSessdata(data.hasSessdata);
         setSessdata(''); // clear input
+        if (data.downloadsDir) {
+          setDownloadsDir(data.downloadsDir);
+        }
         showToast('下载器配置已保存');
       }
     } catch (err) {
@@ -250,7 +257,7 @@ export default function App() {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessdata: '', concurrency })
+        body: JSON.stringify({ sessdata: '', concurrency, downloadsDir })
       });
       if (res.ok) {
         setSavedSessdata(false);
@@ -505,6 +512,8 @@ export default function App() {
                   savedSessdata={savedSessdata ? 'saved' : null}
                   concurrency={concurrency}
                   setConcurrency={setConcurrency}
+                  downloadsDir={downloadsDir}
+                  setDownloadsDir={setDownloadsDir}
                   savingSettings={savingSettings}
                   onSaveSettings={handleSaveSettings}
                   onLogout={handleLogout}

@@ -61,4 +61,5 @@ export interface SettingsInfo {
   sessdata: string;
   hasSessdata: boolean;
   concurrencyLimit: number;
+  downloadsDir?: string;
 }
