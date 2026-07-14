@@ -8,12 +8,27 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const CONFIG_PATH = path.join(process.cwd(), 'config.json');
+let CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
 let sessdata = process.env.SESSDATA || '';
 let bili_jct = '';
 let concurrencyLimit = 2;
 let downloadsDir = 'downloads';
+
+// In Electron environment, resolve paths relative to app's safe/writable directories
+try {
+  const { app: electronApp } = require('electron');
+  if (electronApp) {
+    const userDataPath = electronApp.getPath('userData');
+    CONFIG_PATH = path.join(userDataPath, 'config.json');
+    
+    // Default to user's home Downloads folder to avoid permission issues
+    const defaultDownloads = path.join(electronApp.getPath('downloads'), 'BiliArchiver');
+    downloadsDir = defaultDownloads;
+  }
+} catch (e) {
+  // Outside of Electron, fallback to process.cwd() defaults
+}
 
 function loadSettings() {
   if (fs.existsSync(CONFIG_PATH)) {

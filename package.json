@@ -16,7 +16,12 @@
   "build": {
     "appId": "com.biliarchiver.media",
     "productName": "BiliArchiver",
-    "asar": false,
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ],
     "directories": {
       "output": "dist-desktop"
     },

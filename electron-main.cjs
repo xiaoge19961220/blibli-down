@@ -8,32 +8,53 @@ let mainWindow = null;
 function startExpressServer() {
   const isProd = app.isPackaged;
   
-  // In packaged app, dist/server.cjs is compiled as CJS
-  const serverPath = isProd 
-    ? path.join(process.resourcesPath, 'app', 'dist', 'server.cjs') 
-    : path.join(__dirname, 'server.ts');
+  if (isProd) {
+    // In packaged app, we directly require dist/server.cjs inside Electron's main thread.
+    // This avoids needing a separate Node.js installation on the user's computer and handles ASAR seamlessly!
+    let serverLoaded = false;
+    const pathsToTry = [
+      path.join(process.resourcesPath, 'app.asar', 'dist', 'server.cjs'),
+      path.join(process.resourcesPath, 'app', 'dist', 'server.cjs'),
+      path.join(__dirname, 'dist', 'server.cjs')
+    ];
+    
+    for (const serverPath of pathsToTry) {
+      try {
+        console.log(`Attempting to load Express server directly from: ${serverPath}`);
+        require(serverPath);
+        serverLoaded = true;
+        console.log(`Successfully loaded Express server from: ${serverPath}`);
+        break;
+      } catch (err) {
+        console.warn(`Could not load server from ${serverPath}:`, err.message);
+      }
+    }
+    
+    if (!serverLoaded) {
+      console.error('CRITICAL: Failed to load Express server in production!');
+    }
+  } else {
+    // In development mode, spawn tsx server.ts
+    const serverPath = path.join(__dirname, 'server.ts');
+    console.log(`Starting background Express server in development: npx tsx ${serverPath}`);
+    
+    serverProcess = spawn('npx', ['tsx', serverPath], {
+      env: { 
+        ...process.env, 
+        NODE_ENV: 'development',
+        PORT: '3000'
+      },
+      shell: true
+    });
 
-  const execCommand = isProd ? 'node' : 'npx';
-  const args = isProd ? [serverPath] : ['tsx', serverPath];
+    serverProcess.stdout.on('data', (data) => {
+      console.log(`[Server]: ${data}`);
+    });
 
-  console.log(`Starting background Express server: ${execCommand} ${args.join(' ')}`);
-  
-  serverProcess = spawn(execCommand, args, {
-    env: { 
-      ...process.env, 
-      NODE_ENV: isProd ? 'production' : 'development',
-      PORT: '3000'
-    },
-    shell: true
-  });
-
-  serverProcess.stdout.on('data', (data) => {
-    console.log(`[Server]: ${data}`);
-  });
-
-  serverProcess.stderr.on('data', (data) => {
-    console.error(`[Server Error]: ${data}`);
-  });
+    serverProcess.stderr.on('data', (data) => {
+      console.error(`[Server Error]: ${data}`);
+    });
+  }
 }
 
 function createWindow() {
