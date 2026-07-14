@@ -32,10 +32,11 @@ export interface VideoInfo {
 export interface DownloadTask {
   id: string;
   bvid: string;
+  videoTitle?: string;
   page: number;
   cid: number;
   part: string;
-  status: 'queued' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   downloadedBytes: number;
   totalBytes: number;
@@ -53,6 +54,7 @@ export interface FileItem {
   bvid?: string;
   page?: number;
   title: string;
+  folder?: string;
 }
 
 export interface SettingsInfo {

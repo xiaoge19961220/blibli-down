@@ -22,10 +22,11 @@ app.use(express.json());
 interface DownloadTask {
   id: string; // e.g. "BV1MTQAY4EdP-1"
   bvid: string;
+  videoTitle?: string;
   page: number;
   cid: number;
   part: string;
-  status: 'queued' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress: number; // 0 to 100
   downloadedBytes: number;
   totalBytes: number;
@@ -54,6 +55,62 @@ async function processQueue() {
   }
 }
 
+// Download segment helper
+async function downloadSegment(
+  url: string,
+  outputPath: string,
+  signal: AbortSignal,
+  segmentSize: number,
+  onProgress: (chunkSize: number) => void
+) {
+  let existingBytes = 0;
+  if (fs.existsSync(outputPath)) {
+    existingBytes = fs.statSync(outputPath).size;
+  }
+
+  // If already completed this segment, skip downloading
+  if (existingBytes > 0 && existingBytes >= segmentSize) {
+    return;
+  }
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': 'https://www.bilibili.com',
+    'Cookie': sessdata ? `SESSDATA=${sessdata}` : ''
+  };
+
+  if (existingBytes > 0) {
+    headers['Range'] = `bytes=${existingBytes}-`;
+  }
+
+  const res = await fetch(url, { headers, signal });
+  if (!res.ok) {
+    if (res.status === 416 && existingBytes > 0) {
+      // Range not satisfiable usually means we have all bytes
+      return;
+    }
+    throw new Error(`Bilibili CDN stream error: ${res.statusText} (${res.status})`);
+  }
+
+  const fileWriteStream = fs.createWriteStream(outputPath, { flags: existingBytes > 0 ? 'a' : 'w' });
+  const readableWebStream = res.body;
+  if (!readableWebStream) {
+    throw new Error('Video stream is empty');
+  }
+
+  const reader = readableWebStream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fileWriteStream.write(Buffer.from(value));
+      onProgress(value.length);
+    }
+  } finally {
+    fileWriteStream.end();
+  }
+}
+
 // Perform the actual download
 async function startDownload(task: DownloadTask) {
   activeCount++;
@@ -64,7 +121,23 @@ async function startDownload(task: DownloadTask) {
   const controller = new AbortController();
   activeRequests.set(task.id, controller);
 
+  // Group under a folder named after the video's general title or bvid
+  const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
+  const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+  
+  // Safe filename
+  const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
+  const filename = `${task.page}_${safePart}.mp4`;
+  
+  const filePath = path.join(folderDir, filename);
+  const tempPath = filePath + '.tmp';
+
   try {
+    // Ensure folders exist
+    if (!fs.existsSync(folderDir)) {
+      fs.mkdirSync(folderDir, { recursive: true });
+    }
+
     // 1. Get playurl from Bilibili API
     const playurlApi = `https://api.bilibili.com/x/player/playurl?bvid=${task.bvid}&cid=${task.cid}&qn=80&otype=json&platform=html5&high_quality=1`;
     const playurlRes = await fetch(playurlApi, {
@@ -81,68 +154,78 @@ async function startDownload(task: DownloadTask) {
       throw new Error(playurlJson.message || `Failed to fetch video download link (Code: ${playurlJson.code})`);
     }
 
-    const downloadUrl = playurlJson.data.durl[0].url;
-    const fileLength = playurlJson.data.durl[0].size || 0;
-    task.totalBytes = fileLength;
+    const durlList = playurlJson.data.durl;
+    
+    // Sum total bytes across all segments
+    let totalBytes = 0;
+    for (const d of durlList) {
+      totalBytes += d.size || 0;
+    }
+    task.totalBytes = totalBytes;
 
-    // Ensure safe file name
-    const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
-    const filename = `${task.bvid}_p${task.page}_${safePart}.mp4`;
-    const filePath = path.join(DOWNLOADS_DIR, filename);
-    const tempPath = filePath + '.tmp';
-
-    // 2. Fetch video file stream
-    const videoRes = await fetch(downloadUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.bilibili.com',
-        'Cookie': sessdata ? `SESSDATA=${sessdata}` : ''
-      },
-      signal: controller.signal
-    });
-
-    if (!videoRes.ok) {
-      throw new Error(`Bilibili CDN stream error: ${videoRes.statusText} (${videoRes.status})`);
+    // Calculate current total downloaded bytes from existing fragments
+    let initialDownloaded = 0;
+    for (let i = 0; i < durlList.length; i++) {
+      const segTempPath = durlList.length === 1 ? tempPath : `${tempPath}_seg_${i}`;
+      if (fs.existsSync(segTempPath)) {
+        initialDownloaded += fs.statSync(segTempPath).size;
+      }
+    }
+    task.downloadedBytes = initialDownloaded;
+    if (task.totalBytes > 0) {
+      task.progress = Math.min(100, Math.round((task.downloadedBytes / task.totalBytes) * 100));
     }
 
-    const realTotalBytes = Number(videoRes.headers.get('content-length')) || fileLength;
-    task.totalBytes = realTotalBytes;
-
-    const fileWriteStream = fs.createWriteStream(tempPath);
-    const readableWebStream = videoRes.body;
-    if (!readableWebStream) {
-      throw new Error('Video stream is empty');
-    }
-
-    const reader = readableWebStream.getReader();
     let lastReportedTime = Date.now();
-    let lastReportedBytes = 0;
+    let lastReportedBytes = task.downloadedBytes;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      fileWriteStream.write(Buffer.from(value));
-      task.downloadedBytes += value.length;
+    // Download each segment (supporting pause and resume!)
+    for (let i = 0; i < durlList.length; i++) {
+      const d = durlList[i];
+      const segTempPath = durlList.length === 1 ? tempPath : `${tempPath}_seg_${i}`;
       
-      if (task.totalBytes > 0) {
-        task.progress = Math.min(100, Math.round((task.downloadedBytes / task.totalBytes) * 100));
-      }
+      await downloadSegment(
+        d.url,
+        segTempPath,
+        controller.signal,
+        d.size || 0,
+        (chunkSize) => {
+          task.downloadedBytes += chunkSize;
+          if (task.totalBytes > 0) {
+            task.progress = Math.min(100, Math.round((task.downloadedBytes / task.totalBytes) * 100));
+          }
 
-      const now = Date.now();
-      const duration = (now - lastReportedTime) / 1000;
-      if (duration >= 0.5) { // Update speed calculation every 0.5 seconds
-        const chunkBytes = task.downloadedBytes - lastReportedBytes;
-        task.speed = Math.round(chunkBytes / duration);
-        lastReportedBytes = task.downloadedBytes;
-        lastReportedTime = now;
-      }
+          const now = Date.now();
+          const duration = (now - lastReportedTime) / 1000;
+          if (duration >= 0.5) {
+            const chunkBytes = task.downloadedBytes - lastReportedBytes;
+            task.speed = Math.round(chunkBytes / duration);
+            lastReportedBytes = task.downloadedBytes;
+            lastReportedTime = now;
+          }
+        }
+      );
     }
 
-    fileWriteStream.end();
+    // Merge multiple segments if they exist
+    if (durlList.length > 1) {
+      task.speed = 0;
+      // Merge all segment tmp files into tempPath
+      const writeStream = fs.createWriteStream(tempPath);
+      for (let i = 0; i < durlList.length; i++) {
+        const segTempPath = `${tempPath}_seg_${i}`;
+        if (fs.existsSync(segTempPath)) {
+          const data = fs.readFileSync(segTempPath);
+          writeStream.write(data);
+          fs.unlinkSync(segTempPath); // Clean up the fragment file immediately
+        }
+      }
+      writeStream.end();
+    }
+
     activeRequests.delete(task.id);
 
-    // If file has size 0, throw an error
+    // Verify stats
     const stats = fs.statSync(tempPath);
     if (stats.size === 0) {
       throw new Error('Downloaded file is empty (size 0). SESSDATA may be invalid or access restricted.');
@@ -162,20 +245,15 @@ async function startDownload(task: DownloadTask) {
   } catch (err: any) {
     activeRequests.delete(task.id);
     
-    if (err.name === 'AbortError') {
-      task.status = 'cancelled';
+    if (err.name === 'AbortError' || controller.signal.aborted) {
+      task.status = 'paused';
     } else {
       task.status = 'failed';
       task.error = err.message || 'Unknown network error';
       console.error(`Task ${task.id} download failed:`, err);
     }
     
-    // Clean up temp file
-    const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
-    const tempPath = path.join(DOWNLOADS_DIR, `${task.bvid}_p${task.page}_${safePart}.mp4.tmp`);
-    if (fs.existsSync(tempPath)) {
-      try { fs.unlinkSync(tempPath); } catch {}
-    }
+    task.speed = 0;
   } finally {
     activeCount--;
     processQueue();
@@ -248,7 +326,7 @@ app.get('/api/video-info', async (req, res) => {
 
 // 2. Add video pages to the download queue
 app.post('/api/download', (req, res) => {
-  const { bvid, pages, concurrency } = req.body;
+  const { bvid, title, pages, concurrency } = req.body;
   if (!bvid || !pages || !Array.isArray(pages)) {
     return res.status(400).json({ error: 'bvid and pages are required' });
   }
@@ -257,6 +335,8 @@ app.post('/api/download', (req, res) => {
     concurrencyLimit = Math.min(10, concurrency); // cap at 10 to protect server / avoid ban
   }
 
+  const videoTitle = title || bvid;
+
   for (const p of pages) {
     const id = `${bvid}-${p.page}`;
     
@@ -264,6 +344,7 @@ app.post('/api/download', (req, res) => {
     const task: DownloadTask = {
       id,
       bvid,
+      videoTitle,
       page: p.page,
       cid: p.cid,
       part: p.part,
@@ -291,7 +372,110 @@ app.get('/api/tasks', (req, res) => {
   });
 });
 
-// 4. Cancel task(s)
+// 4. Pause task
+app.post('/api/tasks/pause', (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'id is required' });
+  }
+  const task = tasks.get(id);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  if (task.status === 'downloading' || task.status === 'queued') {
+    if (task.status === 'downloading') {
+      const controller = activeRequests.get(id);
+      if (controller) {
+        controller.abort();
+        activeRequests.delete(id);
+      }
+      activeCount = Math.max(0, activeCount - 1);
+    }
+    task.status = 'paused';
+    task.speed = 0;
+    processQueue();
+    res.json({ success: true, message: `Paused task ${id}` });
+  } else {
+    res.status(400).json({ error: 'Task cannot be paused' });
+  }
+});
+
+// 5. Resume task
+app.post('/api/tasks/resume', (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'id is required' });
+  }
+  const task = tasks.get(id);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  if (task.status === 'paused' || task.status === 'failed' || task.status === 'cancelled') {
+    task.status = 'queued';
+    processQueue();
+    res.json({ success: true, message: `Resumed task ${id}` });
+  } else {
+    res.status(400).json({ error: 'Task is not in a resumeable state' });
+  }
+});
+
+// 6. Redownload task
+app.post('/api/tasks/redownload', (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'id is required' });
+  }
+  const task = tasks.get(id);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  if (task.status === 'downloading') {
+    const controller = activeRequests.get(id);
+    if (controller) {
+      controller.abort();
+      activeRequests.delete(id);
+    }
+    activeCount = Math.max(0, activeCount - 1);
+  }
+
+  // Reset progress and state
+  task.status = 'queued';
+  task.progress = 0;
+  task.downloadedBytes = 0;
+  task.totalBytes = 0;
+  task.speed = 0;
+  task.error = undefined;
+
+  // Attempt to delete any half-finished/completed files
+  const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
+  const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+  const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
+  const filename = `${task.page}_${safePart}.mp4`;
+  const filePath = path.join(folderDir, filename);
+  const tempPath = filePath + '.tmp';
+
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    if (fs.existsSync(folderDir)) {
+      const files = fs.readdirSync(folderDir);
+      const segs = files.filter(f => f.startsWith(filename + '.tmp_seg_'));
+      for (const s of segs) {
+        fs.unlinkSync(path.join(folderDir, s));
+      }
+    }
+  } catch (err) {
+    console.error('Error cleaning files for redownload:', err);
+  }
+
+  processQueue();
+  res.json({ success: true, message: `Restarted task ${id}` });
+});
+
+// 7. Cancel task(s)
 app.post('/api/tasks/cancel', (req, res) => {
   const { id, cancelAll } = req.body;
 
@@ -335,17 +519,47 @@ app.post('/api/tasks/cancel', (req, res) => {
   }
 });
 
-// 5. Remove task record from the task list (only for completed/failed/cancelled tasks)
+// 8. Remove task record from the task list (with option to delete files on disk)
 app.post('/api/tasks/remove', (req, res) => {
-  const { id } = req.body;
+  const { id, deleteFile } = req.body;
   if (!id) {
     return res.status(400).json({ error: 'id is required' });
   }
   const task = tasks.get(id);
   if (task) {
     if (task.status === 'downloading' || task.status === 'queued') {
-      return res.status(400).json({ error: 'Cannot remove an active task. Cancel it first.' });
+      return res.status(400).json({ error: 'Cannot remove an active task. Pause it first.' });
     }
+
+    if (deleteFile) {
+      const safeTitle = (task.videoTitle || task.bvid).replace(/[\\/:*?"<>|]/g, '_').trim();
+      const folderDir = path.join(DOWNLOADS_DIR, safeTitle);
+      const safePart = task.part.replace(/[\\/:*?"<>|]/g, '_');
+      const filename = `${task.page}_${safePart}.mp4`;
+      const filePath = path.join(folderDir, filename);
+      const tempPath = filePath + '.tmp';
+
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        if (fs.existsSync(folderDir)) {
+          // clean segment fragments
+          const files = fs.readdirSync(folderDir);
+          const segs = files.filter(f => f.startsWith(filename + '.tmp_seg_'));
+          for (const s of segs) {
+            fs.unlinkSync(path.join(folderDir, s));
+          }
+          // if folder is empty, delete folder
+          const remaining = fs.readdirSync(folderDir);
+          if (remaining.length === 0) {
+            fs.rmdirSync(folderDir);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to delete files on remove:', err);
+      }
+    }
+
     tasks.delete(id);
     res.json({ success: true });
   } else {
@@ -353,62 +567,93 @@ app.post('/api/tasks/remove', (req, res) => {
   }
 });
 
-// 6. List downloaded files
+// Helper for scanning directories recursively
+function getFilesRecursively(dir: string, baseDir: string = dir): any[] {
+  let results: any[] = [];
+  if (!fs.existsSync(dir)) return results;
+  const list = fs.readdirSync(dir);
+  for (const file of list) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getFilesRecursively(filePath, baseDir));
+    } else if (file.endsWith('.mp4') && !file.endsWith('.tmp')) {
+      const relativePath = path.relative(baseDir, filePath);
+      const folderName = path.dirname(relativePath);
+      const isFlat = folderName === '.';
+      
+      let bvid: string | undefined;
+      let page: number | undefined;
+      let title = file.replace(/\.mp4$/, '');
+
+      // Check flat style naming: ${bvid}_p${page}_${part}.mp4
+      const flatMatch = file.match(/^([a-zA-Z0-9]+)_p(\d+)_(.+)\.mp4$/);
+      if (flatMatch) {
+        bvid = flatMatch[1];
+        page = parseInt(flatMatch[2], 10);
+        title = flatMatch[3].replace(/_/g, ' ');
+      } else {
+        // Check folder structured naming: ${page}_${part}.mp4
+        const folderMatch = file.match(/^(\d+)_(.+)\.mp4$/);
+        if (folderMatch) {
+          page = parseInt(folderMatch[1], 10);
+          title = folderMatch[2].replace(/_/g, ' ');
+        }
+      }
+
+      results.push({
+        filename: relativePath, // relative path used for streaming
+        size: stat.size,
+        createdAt: stat.birthtimeMs,
+        bvid,
+        page,
+        title,
+        folder: isFlat ? undefined : folderName
+      });
+    }
+  }
+  return results;
+}
+
+// 9. List downloaded files (recursively scans directory!)
 app.get('/api/files', (req, res) => {
   try {
-    const files = fs.readdirSync(DOWNLOADS_DIR);
-    const mp4Files = files
-      .filter(f => f.endsWith('.mp4'))
-      .map(filename => {
-        const filePath = path.join(DOWNLOADS_DIR, filename);
-        const stats = fs.statSync(filePath);
-        
-        // Parse filename to extract bvid, page number and title if possible
-        // Format: ${bvid}_p${page}_${part}.mp4
-        const match = filename.match(/^([a-zA-Z0-9]+)_p(\d+)_(.+)\.mp4$/);
-        return {
-          filename,
-          size: stats.size,
-          createdAt: stats.birthtimeMs,
-          bvid: match ? match[1] : undefined,
-          page: match ? parseInt(match[2], 10) : undefined,
-          title: match ? match[3].replace(/_/g, ' ') : filename.replace(/\.mp4$/, '')
-        };
-      })
-      .sort((a, b) => b.createdAt - a.createdAt);
-
+    const mp4Files = getFilesRecursively(DOWNLOADS_DIR);
+    mp4Files.sort((a, b) => b.createdAt - a.createdAt);
     res.json({ files: mp4Files });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to list files' });
   }
 });
+// 10. Stream file (supports Range headers for HTML5 video seeker!)
+app.get('/api/files/stream', (req, res) => {
+  const file = req.query.file;
+  if (!file || typeof file !== 'string') {
+    return res.status(400).send('file parameter is required');
+  }
 
-// 7. Stream file (supports Range headers for HTML5 video seeker!)
-app.get('/api/files/stream/:filename', (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(DOWNLOADS_DIR, filename);
+  const filePath = path.join(DOWNLOADS_DIR, file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).send('File not found');
   }
 
-  // Check if it is a directory or path traversal attempt
   const resolvedPath = path.resolve(filePath);
   if (!resolvedPath.startsWith(path.resolve(DOWNLOADS_DIR))) {
     return res.status(403).send('Forbidden');
   }
 
-  // Express res.sendFile automatically handles:
-  // - Range headers (206 partial content)
-  // - Content-Type (video/mp4)
-  // - Proper streaming behavior
   res.sendFile(filePath);
 });
 
-// 8. Download file directly
-app.get('/api/files/download/:filename', (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(DOWNLOADS_DIR, filename);
+// 11. Download file directly
+app.get('/api/files/download', (req, res) => {
+  const file = req.query.file;
+  if (!file || typeof file !== 'string') {
+    return res.status(400).send('file parameter is required');
+  }
+
+  const filePath = path.join(DOWNLOADS_DIR, file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).send('File not found');
@@ -419,13 +664,17 @@ app.get('/api/files/download/:filename', (req, res) => {
     return res.status(403).send('Forbidden');
   }
 
-  res.download(filePath, filename);
+  res.download(filePath, path.basename(filePath));
 });
 
-// 9. Delete file
-app.delete('/api/files/:filename', (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(DOWNLOADS_DIR, filename);
+// 12. Delete file
+app.delete('/api/files', (req, res) => {
+  const file = req.query.file;
+  if (!file || typeof file !== 'string') {
+    return res.status(400).json({ error: 'file parameter is required' });
+  }
+
+  const filePath = path.join(DOWNLOADS_DIR, file);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
@@ -438,6 +687,14 @@ app.delete('/api/files/:filename', (req, res) => {
 
   try {
     fs.unlinkSync(filePath);
+    // Also recursively clean up parent folder if empty
+    const parentDir = path.dirname(filePath);
+    if (parentDir !== DOWNLOADS_DIR && fs.existsSync(parentDir)) {
+      const remaining = fs.readdirSync(parentDir);
+      if (remaining.length === 0) {
+        fs.rmdirSync(parentDir);
+      }
+    }
     res.json({ success: true, message: 'File deleted successfully' });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to delete file' });
