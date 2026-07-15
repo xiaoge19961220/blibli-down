@@ -111,34 +111,150 @@ export default function LoginSettings({
   
   // Online upgrade interactive states
   const [currentVersion, setCurrentVersion] = useState('v1.0.0');
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'completed'>('idle');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'completed' | 'failed'>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [newVersionInfo, setNewVersionInfo] = useState<{
+    latestVersion: string;
+    releaseName: string;
+    releaseNotes: string;
+    downloadUrl: string;
+    assetName: string;
+    isPrerelease: boolean;
+  } | null>(null);
+  const [updaterError, setUpdaterError] = useState<string | null>(null);
 
-  const handleCheckUpdate = () => {
+  React.useEffect(() => {
+    const fetchCurrentVersion = async () => {
+      try {
+        const res = await fetch('/api/update/check');
+        const data = await res.json();
+        if (data.currentVersion) {
+          setCurrentVersion(data.currentVersion.startsWith('v') ? data.currentVersion : `v${data.currentVersion}`);
+        }
+      } catch (err) {
+        console.error('Failed to fetch current version:', err);
+      }
+    };
+    fetchCurrentVersion();
+  }, []);
+
+  const handleCheckUpdate = async () => {
     setUpdateStatus('checking');
-    setTimeout(() => {
-      setUpdateStatus('available');
-    }, 1500);
+    setUpdaterError(null);
+    try {
+      const res = await fetch('/api/update/check');
+      if (!res.ok) {
+        throw new Error(`服务器返回错误: ${res.status}`);
+      }
+      const data = await res.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      if (data.available) {
+        setNewVersionInfo({
+          latestVersion: data.latestVersion,
+          releaseName: data.releaseName || '',
+          releaseNotes: data.releaseNotes || '',
+          downloadUrl: data.downloadUrl || '',
+          assetName: data.assetName || '',
+          isPrerelease: !!data.isPrerelease
+        });
+        setUpdateStatus('available');
+      } else {
+        setUpdateStatus('idle');
+        alert(`当前已是最新版本 (${data.currentVersion})！`);
+      }
+    } catch (err: any) {
+      console.error('Update check failed:', err);
+      setUpdaterError(err.message || '检查更新失败，请重试');
+      setUpdateStatus('failed');
+    }
   };
 
-  const handleStartUpgrade = () => {
+  const handleStartUpgrade = async () => {
+    if (!newVersionInfo || !newVersionInfo.downloadUrl) {
+      alert('未找到有效的下载链接');
+      return;
+    }
+
     setUpdateStatus('downloading');
     setDownloadProgress(0);
-    const interval = setInterval(() => {
-      setDownloadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setUpdateStatus('installing');
-          setTimeout(() => {
-            setUpdateStatus('completed');
-            setCurrentVersion('v1.1.0');
-          }, 1500);
-          return 100;
-        }
-        const next = prev + Math.floor(Math.random() * 12) + 8;
-        return next > 100 ? 100 : next;
+    setUpdaterError(null);
+
+    try {
+      const res = await fetch('/api/update/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          downloadUrl: newVersionInfo.downloadUrl,
+          assetName: newVersionInfo.assetName
+        })
       });
-    }, 250);
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `启动下载失败: ${res.status}`);
+      }
+
+      // 轮询下载进度
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch('/api/update/status');
+          const statusData = await statusRes.json();
+          setDownloadProgress(statusData.progress || 0);
+
+          if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            setUpdateStatus('installing');
+            
+            // 延时触发安装
+            setTimeout(async () => {
+              try {
+                const installRes = await fetch('/api/update/install', { method: 'POST' });
+                const installData = await installRes.json();
+                if (installRes.ok && installData.success) {
+                  setUpdateStatus('completed');
+                  setCurrentVersion(newVersionInfo.latestVersion);
+                  if (installData.message) {
+                    alert(installData.message);
+                  }
+                } else {
+                  throw new Error(installData.error || '安装包启动失败');
+                }
+              } catch (instErr: any) {
+                console.error('Installation error:', instErr);
+                setUpdaterError(instErr.message || '启动安装包失败');
+                setUpdateStatus('failed');
+              }
+            }, 1000);
+
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            throw new Error('安装包下载失败，可能网络中断或解析错误');
+          }
+        } catch (pollErr: any) {
+          clearInterval(pollInterval);
+          console.error('Polling status error:', pollErr);
+          setUpdaterError(pollErr.message || '下载过程中出错');
+          setUpdateStatus('failed');
+        }
+      }, 500);
+
+    } catch (err: any) {
+      console.error('Start upgrade failed:', err);
+      setUpdaterError(err.message || '启动下载失败');
+      setUpdateStatus('failed');
+    }
+  };
+
+  const handleCancelUpgrade = async () => {
+    try {
+      await fetch('/api/update/cancel', { method: 'POST' });
+      setUpdateStatus('idle');
+      setDownloadProgress(0);
+    } catch (err) {
+      console.error('Cancel upgrade failed:', err);
+    }
   };
 
   return (
@@ -483,7 +599,7 @@ export default function LoginSettings({
         <div className="w-full md:w-auto shrink-0 z-10 border-t md:border-t-0 md:border-l border-[#22252E] pt-4 md:pt-0 md:pl-6 flex flex-col justify-center min-w-[220px]">
           {updateStatus === 'idle' && (
             <div className="space-y-3">
-              <div className="text-[10px] text-slate-500 font-bold font-mono">升级服务就绪</div>
+              <div className="text-[10px] text-slate-500 font-bold font-mono">升级服务就绪 (当前: {currentVersion})</div>
               <button
                 type="button"
                 onClick={handleCheckUpdate}
@@ -507,19 +623,19 @@ export default function LoginSettings({
             </div>
           )}
 
-          {updateStatus === 'available' && (
+          {updateStatus === 'available' && newVersionInfo && (
             <div className="space-y-3 bg-[#0F1115] p-3.5 border border-[#22252E] rounded-2xl animate-in fade-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono font-bold text-bili-pink">发现新版本 v1.1.0</span>
-                <span className="text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold">RELEASED</span>
+                <span className="text-[10px] font-mono font-bold text-bili-pink">发现新版本 {newVersionInfo.latestVersion}</span>
+                <span className="text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold">
+                  {newVersionInfo.isPrerelease ? 'PRE-RELEASE' : 'RELEASED'}
+                </span>
               </div>
               <div className="text-[10px] text-slate-400 space-y-1">
-                <p className="font-semibold text-slate-300">🎉 更新日志 (GitHub Actions):</p>
-                <ul className="list-disc pl-3 space-y-0.5 text-[9px] font-medium">
-                  <li>新增 Bilibili 全网视频/合集搜索功能</li>
-                  <li>支持点击选择本地磁盘保存目录与新建文件夹</li>
-                  <li>提升并发任务调度稳定性</li>
-                </ul>
+                <p className="font-semibold text-slate-300">🎉 {newVersionInfo.releaseName || '更新日志'}:</p>
+                <div className="text-[9px] font-medium leading-relaxed whitespace-pre-wrap font-mono bg-[#161920] p-1.5 rounded border border-[#232731] max-h-[100px] overflow-y-auto pr-1">
+                  {newVersionInfo.releaseNotes || '无详细更新说明。'}
+                </div>
               </div>
               <button
                 type="button"
@@ -535,7 +651,7 @@ export default function LoginSettings({
           {updateStatus === 'downloading' && (
             <div className="space-y-2 py-1">
               <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="font-semibold">正在从 GitHub CDN 下载安装包...</span>
+                <span className="font-semibold">正在下载安装包...</span>
                 <span className="font-mono font-bold text-bili-pink">{downloadProgress}%</span>
               </div>
               <div className="h-2 bg-[#0F1115] border border-[#22252E] rounded-full overflow-hidden">
@@ -544,8 +660,15 @@ export default function LoginSettings({
                   style={{ width: `${downloadProgress}%` }}
                 ></div>
               </div>
-              <div className="text-[9px] text-slate-500 font-mono text-right">
-                BiliArchiver-Setup-1.1.0.exe (32.4MB)
+              <div className="flex justify-between items-center text-[9px] text-slate-500 font-mono">
+                <span className="truncate max-w-[140px] text-left" title={newVersionInfo?.assetName}>{newVersionInfo?.assetName || 'BiliArchiver-update'}</span>
+                <button 
+                  type="button" 
+                  onClick={handleCancelUpgrade}
+                  className="text-bili-pink hover:underline font-bold cursor-pointer"
+                >
+                  取消
+                </button>
               </div>
             </div>
           )}
@@ -554,7 +677,7 @@ export default function LoginSettings({
             <div className="space-y-3 py-1">
               <div className="flex items-center space-x-2 text-xs text-slate-300">
                 <Cpu className="w-4 h-4 text-bili-pink animate-spin" />
-                <span className="font-semibold">正在静默安装最新引擎组件...</span>
+                <span className="font-semibold">正在启动升级组件...</span>
               </div>
               <div className="h-1.5 bg-[#0F1115] rounded-full overflow-hidden">
                 <div className="h-full bg-[#00A1D6] rounded-full w-full animate-pulse"></div>
@@ -566,10 +689,10 @@ export default function LoginSettings({
             <div className="space-y-2.5 bg-[#0A1A14] border border-emerald-950/40 p-3.5 rounded-2xl animate-in zoom-in-95 duration-200">
               <div className="flex items-center space-x-1.5 text-xs text-emerald-400 font-bold">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>在线升级成功！</span>
+                <span>在线升级就绪！</span>
               </div>
               <p className="text-[10px] text-emerald-300/80 leading-relaxed">
-                引擎配置已成功重载，当前已升级至版本 <strong className="font-mono text-white">v1.1.0</strong>。感谢使用！
+                更新包已成功启动/挂载，重启后版本生效。当前目标：<strong className="font-mono text-white">{newVersionInfo?.latestVersion || '最新'}</strong>。
               </p>
               <button
                 type="button"
@@ -577,6 +700,25 @@ export default function LoginSettings({
                 className="w-full py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 font-bold text-[10px] rounded-lg transition cursor-pointer"
               >
                 完成
+              </button>
+            </div>
+          )}
+
+          {updateStatus === 'failed' && (
+            <div className="space-y-2.5 bg-red-950/20 border border-red-500/20 p-3.5 rounded-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex items-center space-x-1.5 text-xs text-red-400 font-bold">
+                <AlertCircle className="w-4 h-4" />
+                <span>升级服务出错</span>
+              </div>
+              <p className="text-[10px] text-red-300/80 leading-relaxed">
+                {updaterError || '发生未知错误，请重试。'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setUpdateStatus('idle')}
+                className="w-full py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 font-bold text-[10px] rounded-lg transition cursor-pointer"
+              >
+                重试
               </button>
             </div>
           )}

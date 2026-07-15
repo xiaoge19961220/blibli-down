@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
@@ -26,7 +26,7 @@
         "provider": "github",
         "owner": "xiaoge19961220",
         "repo": "blibli-down",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "directories": {
@@ -39,16 +39,17 @@
     ],
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.video"
     },
     "win": {
       "target": [
-        "nsis",
-        "zip"
+        "nsis"
       ]
+    },
+    "nsis": {
+      "differentialPackage": false
     }
   },
   "dependencies": {

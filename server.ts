@@ -1,6 +1,8 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { spawn, exec } from 'child_process';
 import { Readable } from 'stream';
 import dotenv from 'dotenv';
 
@@ -1102,6 +1104,249 @@ app.get('/api/search', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || '搜索接口发生内部错误', results: [] });
+  }
+});
+
+
+// 14. Real Auto-Updater API
+let currentVersion = '1.0.0';
+try {
+  let pkgPath = '';
+  if (typeof __dirname !== 'undefined') {
+    pkgPath = fs.existsSync(path.join(__dirname, 'package.json'))
+      ? path.join(__dirname, 'package.json')
+      : path.join(__dirname, '..', 'package.json');
+  } else {
+    pkgPath = path.join(process.cwd(), 'package.json');
+  }
+
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    currentVersion = pkg.version;
+  }
+} catch (err) {
+  console.error('Failed to read version from package.json:', err);
+}
+
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const val1 = parts1[i] || 0;
+    const val2 = parts2[i] || 0;
+    if (val1 > val2) return 1;
+    if (val1 < val2) return -1;
+  }
+  return 0;
+}
+
+let updateDownloadStatus: 'idle' | 'downloading' | 'completed' | 'failed' = 'idle';
+let updateDownloadProgress = 0;
+let downloadedInstallerPath = '';
+let activeDownloadController: AbortController | null = null;
+
+app.get('/api/update/check', async (req, res) => {
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) {
+      headers['Authorization'] = `token ${token}`;
+    }
+
+    const apiRes = await fetch('https://api.github.com/repos/xiaoge19961220/blibli-down/releases', { headers });
+    if (!apiRes.ok) {
+      return res.status(apiRes.status).json({ error: `GitHub API 访问失败 (${apiRes.status})` });
+    }
+    const releases = await apiRes.json() as any[];
+    if (!releases || releases.length === 0) {
+      return res.json({ available: false, currentVersion });
+    }
+
+    // 最新发布的 Release
+    const latestRelease = releases[0];
+    const latestVersion = latestRelease.tag_name.replace(/^v/, '');
+    const cleanCurrentVersion = currentVersion.replace(/^v/, '');
+
+    const isNewer = compareVersions(latestVersion, cleanCurrentVersion) > 0;
+
+    if (!isNewer) {
+      return res.json({ available: false, currentVersion, latestVersion: latestRelease.tag_name });
+    }
+
+    // 匹配对应平台的安装包
+    let assetUrl = '';
+    let assetName = '';
+    const platform = process.platform;
+    for (const asset of latestRelease.assets) {
+      const name = asset.name.toLowerCase();
+      if (platform === 'win32') {
+        if (name.endsWith('.exe')) {
+          assetUrl = asset.browser_download_url;
+          assetName = asset.name;
+          break;
+        }
+      } else if (platform === 'darwin') {
+        if (name.endsWith('.dmg')) {
+          assetUrl = asset.browser_download_url;
+          assetName = asset.name;
+          break;
+        } else if (name.endsWith('.zip') && !name.includes('blockmap')) {
+          assetUrl = asset.browser_download_url;
+          assetName = asset.name;
+        }
+      }
+    }
+
+    res.json({
+      available: true,
+      currentVersion,
+      latestVersion: latestRelease.tag_name,
+      releaseName: latestRelease.name,
+      releaseNotes: latestRelease.body,
+      downloadUrl: assetUrl,
+      assetName: assetName,
+      isPrerelease: latestRelease.prerelease
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '检查更新出错' });
+  }
+});
+
+app.post('/api/update/download', async (req, res) => {
+  const { downloadUrl, assetName } = req.body;
+  if (!downloadUrl) {
+    return res.status(400).json({ error: '缺少 downloadUrl 参数' });
+  }
+
+  if (updateDownloadStatus === 'downloading') {
+    return res.json({ success: true, status: 'downloading', progress: updateDownloadProgress });
+  }
+
+  updateDownloadStatus = 'downloading';
+  updateDownloadProgress = 0;
+  downloadedInstallerPath = '';
+  activeDownloadController = new AbortController();
+
+  res.json({ success: true, message: '开始后台下载更新' });
+
+  // 后台下载线程
+  (async () => {
+    try {
+      const tempDir = os.tmpdir();
+      const savePath = path.join(tempDir, assetName || ('BiliArchiver-update' + (process.platform === 'win32' ? '.exe' : '.dmg')));
+      downloadedInstallerPath = savePath;
+
+      const fetchRes = await fetch(downloadUrl, {
+        signal: activeDownloadController?.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!fetchRes.ok) {
+        throw new Error(`下载文件失败，HTTP 状态码: ${fetchRes.status}`);
+      }
+
+      const totalSize = parseInt(fetchRes.headers.get('content-length') || '0', 10);
+      const writer = fs.createWriteStream(savePath);
+
+      if (!fetchRes.body) {
+        throw new Error('响应体为空');
+      }
+
+      const nodeStream = Readable.fromWeb(fetchRes.body as any);
+      let downloadedSize = 0;
+
+      nodeStream.on('data', (chunk) => {
+        downloadedSize += chunk.length;
+        if (totalSize > 0) {
+          updateDownloadProgress = Math.floor((downloadedSize / totalSize) * 100);
+        }
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        nodeStream.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+        nodeStream.on('error', reject);
+      });
+
+      updateDownloadStatus = 'completed';
+      updateDownloadProgress = 100;
+      console.log(`Update downloaded successfully to: ${savePath}`);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Update download was cancelled by user');
+      } else {
+        console.error('Update download error:', err);
+        updateDownloadStatus = 'failed';
+      }
+    } finally {
+      activeDownloadController = null;
+    }
+  })();
+});
+
+app.get('/api/update/status', (req, res) => {
+  res.json({
+    status: updateDownloadStatus,
+    progress: updateDownloadProgress
+  });
+});
+
+app.post('/api/update/install', (req, res) => {
+  if (updateDownloadStatus !== 'completed' || !downloadedInstallerPath) {
+    return res.status(400).json({ error: '安装文件不存在或尚未下载完成' });
+  }
+
+  const platform = process.platform;
+  try {
+    if (platform === 'win32') {
+      console.log(`Launching installer: ${downloadedInstallerPath}`);
+      const child = spawn(downloadedInstallerPath, [], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+
+      res.json({ success: true, message: '正在启动安装程序，应用即将退出并升级...' });
+
+      setTimeout(() => {
+        try {
+          const { app: electronApp } = require('electron');
+          if (electronApp) electronApp.quit();
+        } catch (e) {
+          process.exit(0);
+        }
+      }, 1000);
+
+    } else if (platform === 'darwin') {
+      console.log(`Opening macOS volume/package: ${downloadedInstallerPath}`);
+      exec(`open "${downloadedInstallerPath}"`, (err) => {
+        if (err) {
+          console.error('Failed to open update file on Mac:', err);
+          return res.status(500).json({ error: '无法打开安装包' });
+        }
+        res.json({ success: true, message: '已为您挂载/打开更新安装包，请将应用拖动覆盖安装。' });
+      });
+    } else {
+      res.status(500).json({ error: `不支持在该平台自动安装: ${platform}` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '执行安装包出错' });
+  }
+});
+
+app.post('/api/update/cancel', (req, res) => {
+  if (activeDownloadController) {
+    activeDownloadController.abort();
+    updateDownloadStatus = 'idle';
+    updateDownloadProgress = 0;
+    res.json({ success: true, message: '已取消下载' });
+  } else {
+    res.json({ success: false, message: '当前没有正在下载的任务' });
   }
 });
 
