@@ -17,8 +17,7 @@ let bili_jct = '';
 let concurrencyLimit = 2;
 let downloadsDir = 'downloads';
 
-let isProd = process.env.NODE_ENV === 'production' || 
-             (typeof __filename !== 'undefined' && (__filename.endsWith('server.cjs') || __filename.includes('dist')));
+let isProd = process.env.NODE_ENV === 'production';
 
 // In Electron environment, resolve paths relative to app's safe/writable directories
 try {
@@ -1115,15 +1114,29 @@ app.get('/api/search', async (req, res) => {
 
 
 // 14. Real Auto-Updater API
-let currentVersion = '1.0.0';
+let currentVersion = '1.0.3';
 try {
   let pkgPath = '';
-  if (typeof __dirname !== 'undefined') {
-    pkgPath = fs.existsSync(path.join(__dirname, 'package.json'))
-      ? path.join(__dirname, 'package.json')
-      : path.join(__dirname, '..', 'package.json');
-  } else {
-    pkgPath = path.join(process.cwd(), 'package.json');
+  let isHotUpdate = false;
+  try {
+    const { app: electronApp } = require('electron');
+    if (electronApp) {
+      const hotPkgPath = path.join(electronApp.getPath('userData'), 'update', 'package.json');
+      if (fs.existsSync(hotPkgPath)) {
+        pkgPath = hotPkgPath;
+        isHotUpdate = true;
+      }
+    }
+  } catch (e) {}
+
+  if (!isHotUpdate) {
+    if (typeof __dirname !== 'undefined') {
+      pkgPath = fs.existsSync(path.join(__dirname, 'package.json'))
+        ? path.join(__dirname, 'package.json')
+        : path.join(__dirname, '..', 'package.json');
+    } else {
+      pkgPath = path.join(process.cwd(), 'package.json');
+    }
   }
 
   if (fs.existsSync(pkgPath)) {
@@ -1151,6 +1164,10 @@ let updateDownloadProgress = 0;
 let downloadedInstallerPath = '';
 let activeDownloadController: AbortController | null = null;
 
+app.get('/api/version', (req, res) => {
+  res.json({ version: currentVersion });
+});
+
 app.get('/api/update/check', async (req, res) => {
   try {
     const headers: Record<string, string> = {
@@ -1163,7 +1180,7 @@ app.get('/api/update/check', async (req, res) => {
 
     const apiRes = await fetch('https://api.github.com/repos/xiaoge19961220/blibli-down/releases', { headers });
     if (!apiRes.ok) {
-      return res.status(apiRes.status).json({ error: `GitHub API 访问失败 (${apiRes.status})` });
+      return res.status(apiRes.status).json({ error: `GitHub API 访问失败 (${apiRes.status})`, currentVersion });
     }
     const releases = await apiRes.json() as any[];
     if (!releases || releases.length === 0) {
@@ -1181,28 +1198,37 @@ app.get('/api/update/check', async (req, res) => {
       return res.json({ available: false, currentVersion, latestVersion: latestRelease.tag_name });
     }
 
-    // 匹配对应平台的安装包
+    // 匹配对应平台的安装包 & 热更新包
     let assetUrl = '';
     let assetName = '';
+    let hotUpdateUrl = '';
     const platform = process.platform;
     for (const asset of latestRelease.assets) {
       const name = asset.name.toLowerCase();
+      if (name === 'dist.zip') {
+        hotUpdateUrl = asset.browser_download_url;
+      }
+      
       if (platform === 'win32') {
         if (name.endsWith('.exe')) {
           assetUrl = asset.browser_download_url;
           assetName = asset.name;
-          break;
         }
       } else if (platform === 'darwin') {
         if (name.endsWith('.dmg')) {
           assetUrl = asset.browser_download_url;
           assetName = asset.name;
-          break;
-        } else if (name.endsWith('.zip') && !name.includes('blockmap')) {
+        } else if (name.endsWith('.zip') && !name.includes('blockmap') && name !== 'dist.zip') {
           assetUrl = asset.browser_download_url;
           assetName = asset.name;
         }
       }
+    }
+
+    // 优先使用在线热更新包 (dist.zip)
+    if (hotUpdateUrl) {
+      assetUrl = hotUpdateUrl;
+      assetName = 'dist.zip';
     }
 
     res.json({
@@ -1213,10 +1239,11 @@ app.get('/api/update/check', async (req, res) => {
       releaseNotes: latestRelease.body,
       downloadUrl: assetUrl,
       assetName: assetName,
-      isPrerelease: latestRelease.prerelease
+      isPrerelease: latestRelease.prerelease,
+      isHotUpdate: !!hotUpdateUrl
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || '检查更新出错' });
+    res.status(500).json({ error: err.message || '检查更新出错', currentVersion });
   }
 });
 
@@ -1302,9 +1329,72 @@ app.get('/api/update/status', (req, res) => {
   });
 });
 
+function extractZip(zipPath: string, destDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const platform = process.platform;
+    let cmd = '';
+    if (platform === 'win32') {
+      const escapedZip = zipPath.replace(/'/g, "''");
+      const escapedDest = destDir.replace(/'/g, "''");
+      cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDest}' -Force"`;
+    } else {
+      cmd = `unzip -o "${zipPath}" -d "${destDir}"`;
+    }
+
+    console.log(`[HotUpdate] Extracting update from ${zipPath} to ${destDir} via: ${cmd}`);
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[HotUpdate] Extraction failed:', stderr || err.message);
+        return reject(new Error(stderr || err.message));
+      }
+      console.log('[HotUpdate] Extraction completed successfully');
+      resolve();
+    });
+  });
+}
+
 app.post('/api/update/install', (req, res) => {
   if (updateDownloadStatus !== 'completed' || !downloadedInstallerPath) {
     return res.status(400).json({ error: '安装文件不存在或尚未下载完成' });
+  }
+
+  // 检查是否为热更新包 (.zip)
+  if (downloadedInstallerPath.endsWith('.zip')) {
+    try {
+      const { app: electronApp } = require('electron');
+      if (!electronApp) {
+        return res.status(400).json({ error: '未检测到 Electron 运行环境，无法执行热更新' });
+      }
+
+      const userDataPath = electronApp.getPath('userData');
+      const updateDir = path.join(userDataPath, 'update');
+
+      if (!fs.existsSync(updateDir)) {
+        fs.mkdirSync(updateDir, { recursive: true });
+      }
+
+      extractZip(downloadedInstallerPath, updateDir)
+        .then(() => {
+          res.json({ success: true, message: '极速免安装热更新已应用成功！客户端即将自动重启生效。' });
+
+          setTimeout(() => {
+            try {
+              electronApp.relaunch();
+              electronApp.exit(0);
+            } catch (e) {
+              process.exit(0);
+            }
+          }, 1500);
+        })
+        .catch((err) => {
+          console.error('[HotUpdate] Hot update extraction error:', err);
+          res.status(500).json({ error: `热更新包解压失败: ${err.message}` });
+        });
+
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || '热更新解压安装时出错' });
+    }
+    return;
   }
 
   const platform = process.platform;
@@ -1370,7 +1460,18 @@ async function startServer() {
   } else {
     // In production, server.cjs is bundled inside the dist directory itself.
     // So __dirname points to the dist directory.
-    const distPath = __dirname;
+    let distPath = __dirname;
+    try {
+      const { app: electronApp } = require('electron');
+      if (electronApp) {
+        const hotDistPath = path.join(electronApp.getPath('userData'), 'update');
+        if (fs.existsSync(path.join(hotDistPath, 'index.html'))) {
+          distPath = hotDistPath;
+          console.log(`[HotUpdate] Serving static files from hot update path: ${distPath}`);
+        }
+      }
+    } catch (e) {}
+
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

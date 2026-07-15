@@ -31,8 +31,18 @@ jobs:
         run: npm ci
 
       - name: Build App & Generate Binaries
+        shell: bash
         run: |
           npm run build
+          cp package.json dist/package.json
+          mkdir -p dist-desktop
+          cd dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell -Command "Compress-Archive -Path * -DestinationPath ../dist-desktop/dist.zip -Force"
+          else
+            zip -r ../dist-desktop/dist.zip .
+          fi
+          cd ..
           npx electron-builder --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -46,6 +56,7 @@ jobs:
             dist-desktop/*.exe
             dist-desktop/*.yml
             dist-desktop/*.blockmap
+            dist-desktop/*.zip
           if-no-files-found: ignore
           retention-days: 1
 
@@ -71,6 +82,7 @@ jobs:
             dist-release/*.exe
             dist-release/*.yml
             dist-release/*.blockmap
+            dist-release/*.zip
           draft: false
           prerelease: false
         env:

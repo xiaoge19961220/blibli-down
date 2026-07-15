@@ -74,12 +74,25 @@ export default function Navigation({
       <div className="space-y-6 flex flex-col h-full justify-between md:justify-start">
         {/* App Branding */}
         <div className="flex items-center space-x-3 pb-4 border-b border-[#22252E] px-2">
-          <div className="w-9 h-9 rounded-xl bg-bili-pink flex items-center justify-center text-white shadow-lg shadow-bili-pink/20">
-            <Sparkles className="w-5 h-5" />
+          {/* Logo representation - BiliArchiver Icon */}
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bili-pink to-[#00A1D6] p-[1.5px] shadow-lg shadow-bili-pink/10 shrink-0">
+            <div className="w-full h-full bg-[#111319] rounded-[9px] flex flex-col items-center justify-center relative overflow-hidden">
+              <div className="absolute w-1.5 h-1 bg-bili-pink rounded-t-sm -top-0.5"></div>
+              <div className="w-6.5 h-5 border border-slate-300 rounded flex items-center justify-center relative">
+                {/* Antennas */}
+                <div className="absolute -top-1 -left-0.5 w-1.5 h-0.5 bg-slate-400 rotate-[-30deg]"></div>
+                <div className="absolute -top-1 -right-0.5 w-1.5 h-0.5 bg-slate-400 rotate-[30deg]"></div>
+                {/* Screen elements */}
+                <div className="flex flex-col items-center leading-none">
+                  <span className="text-[5px] font-bold text-bili-pink leading-none tracking-tighter scale-95">Bili</span>
+                  <span className="text-[4px] font-bold text-[#00A1D6] leading-none tracking-tighter scale-75 -mt-0.5">Arc</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div>
-            <h1 className="text-sm font-black text-white tracking-wide font-sans">BENTO PRO</h1>
-            <p className="text-[10px] text-slate-500 font-mono">LOCAL VIDEO MANAGER</p>
+            <h1 className="text-xs font-black text-white tracking-wide font-sans">BiliArchiver</h1>
+            <p className="text-[9px] text-bili-pink font-bold font-sans">哔哩归档大师</p>
           </div>
         </div>
 
@@ -112,7 +125,7 @@ export default function Navigation({
       {/* Footer Branding */}
       <div className="hidden md:block pt-4 border-t border-[#22252E] px-2 text-[10px] text-slate-600 font-mono">
         <p>100% Local Processing</p>
-        <p className="text-slate-700">v0.1.0 • Desktop Enabled</p>
+        <p className="text-slate-700">v1.0.2 • Desktop Engine</p>
       </div>
     </aside>
   );

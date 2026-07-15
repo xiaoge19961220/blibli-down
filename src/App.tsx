@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, PlayCircle, Loader2 } from 'lucide-react';
+import { RefreshCw, PlayCircle, Loader2, ArrowUpCircle } from 'lucide-react';
 import { PageInfo, VideoInfo, DownloadTask, FileItem, SettingsInfo } from './types';
 
 // Modular Page Components
@@ -211,13 +211,13 @@ export default function App() {
             qrPollIntervalRef.current = null;
           }
           fetchSettings();
-        } else if (code === 86038) {
+        } else if (code === 86090) {
           setQrLoginStatus('scanned');
           setQrStatusText('手机上已扫码，请按「确认」');
         } else if (code === 86101) {
           setQrLoginStatus('waiting');
           setQrStatusText('等待您在手机端扫码授权');
-        } else if (code === 86090) {
+        } else if (code === 86038) {
           setQrLoginStatus('expired');
           setQrStatusText('二维码已过期');
           if (qrPollIntervalRef.current) {
@@ -451,18 +451,18 @@ export default function App() {
                 {activeTab}
               </span>
             </h1>
-            <p className="text-[10px] text-slate-400 font-mono hidden sm:block">
-              Host: http://127.0.0.1:3000 • Electron Wrapper Desktop Engine
+            <p className="text-[10px] text-bili-pink font-semibold hidden sm:block">
+              100% 纯本地极速多线程备份
             </p>
           </div>
 
           <button 
-            onClick={handleGlobalSync}
-            className="p-2 bg-[#0F1115] hover:bg-[#1A1D23] border border-[#22252E] hover:border-bili-pink/20 text-slate-400 hover:text-white rounded-xl transition cursor-pointer flex items-center space-x-1.5 text-xs font-semibold"
-            title="全局强同步"
+            onClick={() => setActiveTab('settings')}
+            className="p-2 bg-[#0F1115] hover:bg-bili-pink/10 border border-[#22252E] hover:border-bili-pink/30 text-slate-400 hover:text-white rounded-xl transition cursor-pointer flex items-center space-x-1.5 text-xs font-semibold"
+            title="在线检查并升级新版本"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">手动同步</span>
+            <ArrowUpCircle className="w-3.5 h-3.5 text-bili-pink" />
+            <span className="hidden sm:inline">检查新版本</span>
           </button>
         </header>
 

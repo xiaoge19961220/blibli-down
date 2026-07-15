@@ -1,5 +1,6 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 
 let serverProcess = null;
@@ -13,11 +14,21 @@ function startExpressServer() {
     // In packaged app, we directly require dist/server.cjs inside Electron's main thread.
     // This avoids needing a separate Node.js installation on the user's computer and handles ASAR seamlessly!
     let serverLoaded = false;
-    const pathsToTry = [
+    
+    // Check for hot update server in userData
+    const userDataPath = app.getPath('userData');
+    const hotUpdateServerPath = path.join(userDataPath, 'update', 'server.cjs');
+    
+    const pathsToTry = [];
+    if (fs.existsSync(hotUpdateServerPath)) {
+      pathsToTry.push(hotUpdateServerPath);
+    }
+    
+    pathsToTry.push(
       path.join(process.resourcesPath, 'app.asar', 'dist', 'server.cjs'),
       path.join(process.resourcesPath, 'app', 'dist', 'server.cjs'),
       path.join(__dirname, 'dist', 'server.cjs')
-    ];
+    );
     
     for (const serverPath of pathsToTry) {
       try {

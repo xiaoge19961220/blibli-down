@@ -126,13 +126,29 @@ export default function LoginSettings({
   React.useEffect(() => {
     const fetchCurrentVersion = async () => {
       try {
-        const res = await fetch('/api/update/check');
+        const res = await fetch('/api/version');
         const data = await res.json();
-        if (data.currentVersion) {
-          setCurrentVersion(data.currentVersion.startsWith('v') ? data.currentVersion : `v${data.currentVersion}`);
+        if (data.version) {
+          setCurrentVersion(data.version.startsWith('v') ? data.version : `v${data.version}`);
+        } else {
+          // Fallback
+          const checkRes = await fetch('/api/update/check');
+          const checkData = await checkRes.json();
+          if (checkData.currentVersion) {
+            setCurrentVersion(checkData.currentVersion.startsWith('v') ? checkData.currentVersion : `v${checkData.currentVersion}`);
+          }
         }
       } catch (err) {
-        console.error('Failed to fetch current version:', err);
+        console.error('Failed to fetch current version, attempting fallback:', err);
+        try {
+          const checkRes = await fetch('/api/update/check');
+          const checkData = await checkRes.json();
+          if (checkData.currentVersion) {
+            setCurrentVersion(checkData.currentVersion.startsWith('v') ? checkData.currentVersion : `v${checkData.currentVersion}`);
+          }
+        } catch (innerErr) {
+          console.error('Fallback failed:', innerErr);
+        }
       }
     };
     fetchCurrentVersion();
@@ -554,43 +570,12 @@ export default function LoginSettings({
         <div className="absolute right-0 top-0 -translate-y-12 translate-x-12 w-64 h-64 bg-bili-pink/5 rounded-full blur-3xl pointer-events-none"></div>
         
         <div className="flex flex-col md:flex-row items-start md:items-center gap-5 flex-1 z-10">
-          {/* Logo representation */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-bili-pink to-[#00A1D6] p-[1.5px] shadow-lg shadow-bili-pink/5 shrink-0">
-            <div className="w-full h-full bg-[#111319] rounded-[14px] flex flex-col items-center justify-center relative overflow-hidden">
-              {/* Custom styled BiliDown visual icon */}
-              <div className="absolute w-2.5 h-1.5 bg-bili-pink rounded-t-sm -top-0.5"></div>
-              <div className="w-9 h-7 border-2 border-slate-300 rounded-lg flex items-center justify-center relative">
-                {/* Antennas */}
-                <div className="absolute -top-1.5 -left-1 w-2.5 h-0.5 bg-slate-400 rotate-[-30deg]"></div>
-                <div className="absolute -top-1.5 -right-1 w-2.5 h-0.5 bg-slate-400 rotate-[30deg]"></div>
-                {/* Screen elements */}
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] font-bold text-bili-pink leading-none tracking-tighter">Bili</span>
-                  <span className="text-[5px] font-bold text-[#00A1D6] leading-none tracking-tighter -mt-0.5">Archiver</span>
-                </div>
-              </div>
-              <div className="absolute bottom-1.5 flex items-center space-x-0.5">
-                <span className="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></span>
-                <span className="text-[7px] font-mono text-slate-500 font-bold">1.0.0</span>
-              </div>
-            </div>
-          </div>
-
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                BiliArchiver 哔哩归档大师
-              </h3>
-              <span className="px-2 py-0.5 text-[8px] font-mono font-bold bg-[#1C1F28] text-slate-400 border border-[#2B2E37] rounded-md">
-                {currentVersion}
-              </span>
-              <span className="px-2 py-0.5 text-[8px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md flex items-center space-x-1">
-                <Check className="w-2.5 h-2.5" />
-                <span>GitHub Actions 官方签名</span>
-              </span>
-            </div>
+            <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+              <span>应用一键在线升级</span>
+            </h3>
             <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-              本软件完美支持依靠 <strong className="text-slate-200">GitHub Actions</strong> 全平台自动化编译与打包发布。每当 GitHub 端发布带有版本号的 <code className="text-[10px] bg-[#0F1115] px-1 py-0.5 rounded text-bili-pink font-mono">v*</code> Tag 时，Actions 工作流会自动构建并发布最新 Release 包，并通知客户端进行在线热升级。
+              在线检测最新发布的 Release 版本，并自动拉取编译产物进行热更新升级。
             </p>
           </div>
         </div>
