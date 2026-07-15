@@ -1,1 +1,0 @@
-refactor: auto-read currentVersion from Electron and package.json to avoid manual duplicate edits
