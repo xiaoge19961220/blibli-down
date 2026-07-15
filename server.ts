@@ -1114,7 +1114,7 @@ app.get('/api/search', async (req, res) => {
 
 
 // 14. Real Auto-Updater API
-let currentVersion = '1.0.3';
+let currentVersion = '1.0.0'; // Default fallback if all dynamic methods fail
 try {
   let pkgPath = '';
   let isHotUpdate = false;
@@ -1125,6 +1125,10 @@ try {
       if (fs.existsSync(hotPkgPath)) {
         pkgPath = hotPkgPath;
         isHotUpdate = true;
+      } else {
+        // Automatically get the packaged app's current version from Electron!
+        currentVersion = electronApp.getVersion();
+        isHotUpdate = true; // Set to true to skip file-system package.json read
       }
     }
   } catch (e) {}
@@ -1139,9 +1143,11 @@ try {
     }
   }
 
-  if (fs.existsSync(pkgPath)) {
+  if (pkgPath && fs.existsSync(pkgPath)) {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    currentVersion = pkg.version;
+    if (pkg && pkg.version) {
+      currentVersion = pkg.version;
+    }
   }
 } catch (err) {
   console.error('Failed to read version from package.json:', err);
