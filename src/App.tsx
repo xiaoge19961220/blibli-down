@@ -639,7 +639,6 @@ export default function App() {
         setActiveTab={setActiveTab}
         activeDownloadsCount={activeTasksCount}
         completedFilesCount={files.length}
-        hasSessdata={savedSessdata}
       />
 
       {/* Main Area View */}
@@ -652,7 +651,7 @@ export default function App() {
                 {activeTab === 'search' ? '哔哩哔哩视频搜索' : 
                  activeTab === 'extractor' ? '视频提取与解析' : 
                  activeTab === 'downloads' ? '多线程下载管理' : 
-                 activeTab === 'settings' ? '账号管理与配置' : 
+                 activeTab === 'settings' ? '系统配置与参数' : 
                  '协议与隐私政策'}
               </span>
               <span className="text-[9px] font-mono font-bold bg-bili-pink/10 text-bili-pink border border-bili-pink/20 px-2 py-0.5 rounded uppercase">
@@ -678,9 +677,13 @@ export default function App() {
             {/* Avatar / Login button */}
             {savedSessdata && biliUser ? (
               <div 
-                onClick={() => setActiveTab('settings')}
+                onClick={async () => {
+                  if (window.confirm(`当前登录账号：${biliUser.uname}\n确定要退出登录吗？`)) {
+                    await handleLogout();
+                  }
+                }}
                 className="flex items-center space-x-2 bg-[#0F1115] hover:bg-[#1A1D23] border border-[#22252E] hover:border-[#3B3E4A] px-2.5 py-1.5 rounded-xl cursor-pointer transition select-none"
-                title={`已登录: ${biliUser.uname}`}
+                title={`已登录: ${biliUser.uname} (点击退出账号)`}
               >
                 <img 
                   src={biliUser.face} 
@@ -757,22 +760,12 @@ export default function App() {
 
               {activeTab === 'settings' && (
                 <LoginSettings 
-                  savedSessdata={savedSessdata}
-                  biliUser={biliUser}
-                  checkingStatus={checkingLoginStatus}
-                  statusMessage={loginStatusMessage}
-                  checkLoginStatus={checkLoginStatus}
-                  onLogout={handleLogout}
                   concurrency={concurrency}
                   setConcurrency={setConcurrency}
                   downloadsDir={downloadsDir}
                   setDownloadsDir={setDownloadsDir}
                   savingSettings={savingSettings}
                   onSaveSettings={handleSaveSettings}
-                  qrCodeUrl={qrCodeUrl}
-                  qrLoginStatus={qrLoginStatus}
-                  qrStatusText={qrStatusText}
-                  onGenerateQR={handleGenerateQR}
                 />
               )}
 

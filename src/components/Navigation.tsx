@@ -14,14 +14,12 @@ interface NavigationProps {
   setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'settings' | 'about') => void;
   activeDownloadsCount: number;
   completedFilesCount: number;
-  hasSessdata: boolean;
 }
 
 export default function Navigation({
   activeTab,
   setActiveTab,
-  activeDownloadsCount,
-  hasSessdata
+  activeDownloadsCount
 }: NavigationProps) {
   const navItems = [
     { 
@@ -48,13 +46,9 @@ export default function Navigation({
     },
     { 
       id: 'settings' as const, 
-      label: '账号管理', 
+      label: '系统配置', 
       icon: Settings,
-      badge: hasSessdata ? (
-        <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-      ) : (
-        <UserX className="w-4 h-4 text-amber-500 shrink-0" />
-      )
+      badge: null
     },
     { 
       id: 'about' as const, 
