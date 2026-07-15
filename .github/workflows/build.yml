@@ -4,7 +4,14 @@ on:
   push:
     tags:
       - 'v*'
-
+  # 关键：加上这一行，允许手动触发
+  workflow_dispatch:
+    # 还可以选择性地配置手动触发时的输入参数（选填）
+    inputs:
+      version:
+        description: '手动发布的版本号 (例如 v1.0.0)'
+        required: false
+        default: 'v1.0.0'
 permissions:
   contents: write
 
