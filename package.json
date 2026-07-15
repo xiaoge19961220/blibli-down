@@ -15,7 +15,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "desktop:dev": "electron .",
-    "desktop:build": "npm run build && electron-builder"
+    "desktop:build": "npm run build && electron-builder",
+    "release": "npm version patch",
+    "postversion": "git push && git push --tags"
   },
   "build": {
     "appId": "com.biliarchiver.media",
