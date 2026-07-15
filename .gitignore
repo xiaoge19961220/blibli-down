@@ -10,3 +10,4 @@ coverage/
 .vscode/
 downloads/
 dist-desktop/
+config.json
