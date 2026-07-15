@@ -1,7 +1,7 @@
 {
   "name": "biliarchiver",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron-main.cjs",
   "repository": {
@@ -35,20 +35,21 @@
     "files": [
       "dist/**/*",
       "electron-main.cjs",
-      "package.json"
+      "package.json",
+      "assets/**/*"
     ],
     "mac": {
       "target": [
         "dmg"
       ],
       "category": "public.app-category.video",
-      "icon": "build/icon.icns"
+      "icon": "assets/icons/icon.icns"
     },
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico"
+      "icon": "assets/icons/icon.ico"
     },
     "nsis": {
       "differentialPackage": false

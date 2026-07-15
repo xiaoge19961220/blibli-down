@@ -83,7 +83,7 @@ app.use(express.json());
 
 // Memory-based state
 interface DownloadTask {
-  id: string; // e.g. "BV1MTQAY4EdP-1"
+  id: string; // e.g.
   bvid: string;
   videoTitle?: string;
   page: number;

@@ -104,7 +104,7 @@ export default function VideoExtractor({
             <div className="relative flex-1">
               <input 
                 type="text"
-                placeholder="请输入哔哩哔哩视频链接或 BV 号 (例如: BV1MTQAY4EdP)"
+                placeholder="请输入哔哩哔哩视频链接或 BV 号"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 disabled={loadingInfo}

@@ -1,8 +1,7 @@
 import React from 'react';
 import { 
   Search, 
-  Download, 
-  Film, 
+  Download,
   Settings, 
   Sparkles,
   UserCheck,
@@ -21,7 +20,6 @@ export default function Navigation({
   activeTab,
   setActiveTab,
   activeDownloadsCount,
-  completedFilesCount,
   hasSessdata
 }: NavigationProps) {
   const navItems = [
@@ -48,16 +46,6 @@ export default function Navigation({
       ) : null
     },
     { 
-      id: 'library' as const, 
-      label: '本地影音库', 
-      icon: Film,
-      badge: completedFilesCount > 0 ? (
-        <span className="px-1.5 py-0.5 text-[10px] font-mono bg-[#1C1F28] border border-[#2B2E37] text-slate-400 rounded-full">
-          {completedFilesCount}
-        </span>
-      ) : null
-    },
-    { 
       id: 'settings' as const, 
       label: '账号管理', 
       icon: Settings,
@@ -73,23 +61,7 @@ export default function Navigation({
     <aside id="bento-sidebar" className="w-full md:w-64 bg-[#151821]/90 backdrop-blur border-b md:border-b-0 md:border-r border-[#232731] flex flex-col justify-between p-5 md:h-screen sticky top-0 z-30 shrink-0">
       <div className="space-y-6 flex flex-col h-full justify-between md:justify-start">
         {/* App Branding */}
-        <div className="flex items-center space-x-3 pb-4 border-b border-[#22252E] px-2">
-          {/* Logo representation - BiliArchiver Icon */}
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bili-pink to-[#00A1D6] p-[1.5px] shadow-lg shadow-bili-pink/10 shrink-0">
-            <div className="w-full h-full bg-[#111319] rounded-[9px] flex flex-col items-center justify-center relative overflow-hidden">
-              <div className="absolute w-1.5 h-1 bg-bili-pink rounded-t-sm -top-0.5"></div>
-              <div className="w-6.5 h-5 border border-slate-300 rounded flex items-center justify-center relative">
-                {/* Antennas */}
-                <div className="absolute -top-1 -left-0.5 w-1.5 h-0.5 bg-slate-400 rotate-[-30deg]"></div>
-                <div className="absolute -top-1 -right-0.5 w-1.5 h-0.5 bg-slate-400 rotate-[30deg]"></div>
-                {/* Screen elements */}
-                <div className="flex flex-col items-center leading-none">
-                  <span className="text-[5px] font-bold text-bili-pink leading-none tracking-tighter scale-95">Bili</span>
-                  <span className="text-[4px] font-bold text-[#00A1D6] leading-none tracking-tighter scale-75 -mt-0.5">Arc</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="flex pt-2 items-center space-x-3 pb-4 border-b border-[#22252E] px-2">
           <div>
             <h1 className="text-xs font-black text-white tracking-wide font-sans">BiliArchiver</h1>
             <p className="text-[9px] text-bili-pink font-bold font-sans">哔哩归档大师</p>

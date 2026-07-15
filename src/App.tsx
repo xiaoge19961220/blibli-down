@@ -8,7 +8,6 @@ import Navigation from './components/Navigation';
 import VideoSearch from './components/VideoSearch';
 import VideoExtractor from './components/VideoExtractor';
 import DownloadManager from './components/DownloadManager';
-import VideoLibrary from './components/VideoLibrary';
 import LoginSettings from './components/LoginSettings';
 
 export default function App() {
@@ -16,7 +15,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'search' | 'extractor' | 'downloads' | 'library' | 'settings'>('search');
 
   // Input video metadata URL or BVID
-  const [urlInput, setUrlInput] = useState('BV1MTQAY4EdP');
+  const [urlInput, setUrlInput] = useState('');
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [errorInfo, setErrorInfo] = useState<string | null>(null);
   
@@ -512,16 +511,6 @@ export default function App() {
                   downloadsDir={downloadsDir}
                 />
               )}
-
-              {activeTab === 'library' && (
-                <VideoLibrary 
-                  files={files}
-                  loadingFiles={loadingFiles}
-                  onRefreshFiles={fetchFiles}
-                  onDeleteFile={handleDeleteFile}
-                />
-              )}
-
               {activeTab === 'settings' && (
                 <LoginSettings 
                   sessdata={sessdata}

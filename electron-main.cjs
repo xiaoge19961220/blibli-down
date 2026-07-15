@@ -75,6 +75,7 @@ function createWindow() {
     height: 830,
     minWidth: 1024,
     minHeight: 700,
+    icon: path.join(__dirname, 'assets/icon.icns'),
     title: "BiliArchiver - 哔哩智能归档器",
     show: false,
     backgroundColor: '#0A0C10',
