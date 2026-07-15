@@ -1,0 +1,11 @@
+0000000000000000000000000000000000000000 58555b98d0b6d4dfa2b1f2e9af3073626b880a76 AI Studio <ai-studio@example.com> 1784083806 +0000	commit (initial): local changes
+58555b98d0b6d4dfa2b1f2e9af3073626b880a76 58555b98d0b6d4dfa2b1f2e9af3073626b880a76 AI Studio <ai-studio@example.com> 1784083938 +0000	reset: moving to HEAD
+58555b98d0b6d4dfa2b1f2e9af3073626b880a76 58555b98d0b6d4dfa2b1f2e9af3073626b880a76 AI Studio <ai-studio@example.com> 1784084671 +0000	reset: moving to HEAD
+58555b98d0b6d4dfa2b1f2e9af3073626b880a76 bbbda84cfd802a9dc5e734bacb22ef726e5e70fc AI Studio <ai-studio@example.com> 1784084671 +0000	checkout: moving from temp-branch to main
+bbbda84cfd802a9dc5e734bacb22ef726e5e70fc bbbda84cfd802a9dc5e734bacb22ef726e5e70fc AI Studio <ai-studio@example.com> 1784084671 +0000	reset: moving to origin/main
+bbbda84cfd802a9dc5e734bacb22ef726e5e70fc c48601421b4ced787e51dcef7153bd2c7616f1c1 AI Studio <ai-studio@example.com> 1784087200 +0000	commit: feat: 支持极速免安装热更新; 升级至 v1.0.3; 修复403限流并自定义专属安装包/热更新图标
+c48601421b4ced787e51dcef7153bd2c7616f1c1 2f9882fe15c78022253794da98fb401a78170f7b AI Studio <ai-studio@example.com> 1784088057 +0000	pull --rebase origin main (start): checkout 2f9882fe15c78022253794da98fb401a78170f7b
+2f9882fe15c78022253794da98fb401a78170f7b 458e452a8242c77390b24ebfffa894a27e970bfb AI Studio <ai-studio@example.com> 1784088089 +0000	rebase (continue): feat: 支持极速免安装热更新; 升级至 v1.0.3; 修复403限流并自定义专属安装包/热更新图标
+458e452a8242c77390b24ebfffa894a27e970bfb 458e452a8242c77390b24ebfffa894a27e970bfb AI Studio <ai-studio@example.com> 1784088089 +0000	rebase (continue) (finish): returning to refs/heads/main
+458e452a8242c77390b24ebfffa894a27e970bfb cdf540782cd9a3a7b0a285fca216391526d701ae AI Studio <ai-studio@example.com> 1784088123 +0000	commit: chore: update package-lock.json to sync with package.json and update fallback version in server.ts
+cdf540782cd9a3a7b0a285fca216391526d701ae 99337a1d9c8ea5017e61b6f4cd19c7324326f6eb AI Studio <ai-studio@example.com> 1784088417 +0000	commit: refactor: auto-read currentVersion from Electron and package.json to avoid manual duplicate edits

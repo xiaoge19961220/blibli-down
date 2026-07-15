@@ -12,7 +12,7 @@ import LoginSettings from './components/LoginSettings';
 
 export default function App() {
   // Navigation active tab
-  const [activeTab, setActiveTab] = useState<'search' | 'extractor' | 'downloads' | 'library' | 'settings'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'extractor' | 'downloads' | 'settings'>('search');
 
   // Input video metadata URL or BVID
   const [urlInput, setUrlInput] = useState('');
@@ -423,7 +423,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-bili-dark text-slate-100 font-sans selection:bg-bili-pink selection:text-white flex flex-col md:flex-row relative overflow-x-hidden">
+    <div className="min-h-screen md:h-screen md:overflow-hidden bg-bili-dark text-slate-100 font-sans selection:bg-bili-pink selection:text-white flex flex-col md:flex-row relative overflow-x-hidden">
       
       {/* Dynamic ambient design background glows */}
       <div className="absolute top-[-100px] right-[-50px] w-[500px] h-[500px] bg-bili-pink/5 rounded-full blur-[120px] pointer-events-none"></div>
@@ -439,13 +439,13 @@ export default function App() {
       />
 
       {/* Main Area View */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-screen md:min-h-0 md:h-screen md:overflow-y-auto">
         
         {/* Top bar header */}
         <header className="border-b border-[#22252E] bg-bili-dark/80 backdrop-blur sticky top-0 z-20 px-6 py-4 flex items-center justify-between">
           <div className="space-y-0.5">
             <h1 className="text-base font-bold text-white flex items-center space-x-2">
-              <span>{activeTab === 'search' ? '哔哩哔哩视频搜索' : activeTab === 'extractor' ? '视频提取与解析' : activeTab === 'downloads' ? '多线程下载管理' : activeTab === 'library' ? '本地合集媒体库' : '设置与身份凭证'}</span>
+              <span>{activeTab === 'search' ? '哔哩哔哩视频搜索' : activeTab === 'extractor' ? '视频提取与解析' : activeTab === 'downloads' ? '多线程下载管理' : '设置与身份凭证'}</span>
               <span className="text-[9px] font-mono font-bold bg-bili-pink/10 text-bili-pink border border-bili-pink/20 px-2 py-0.5 rounded uppercase">
                 {activeTab}
               </span>

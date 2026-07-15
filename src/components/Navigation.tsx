@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 
 interface NavigationProps {
-  activeTab: 'search' | 'extractor' | 'downloads' | 'library' | 'settings';
-  setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'library' | 'settings') => void;
+  activeTab: 'search' | 'extractor' | 'downloads' | 'settings';
+  setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'settings') => void;
   activeDownloadsCount: number;
   completedFilesCount: number;
   hasSessdata: boolean;
