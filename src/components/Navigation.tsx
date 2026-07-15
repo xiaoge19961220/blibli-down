@@ -94,12 +94,6 @@ export default function Navigation({
           })}
         </nav>
       </div>
-
-      {/* Footer Branding */}
-      <div className="hidden md:block pt-4 border-t border-[#22252E] px-2 text-[10px] text-slate-600 font-mono">
-        <p>100% Local Processing</p>
-        <p className="text-slate-700">v1.0.2 • Desktop Engine</p>
-      </div>
     </aside>
   );
 }

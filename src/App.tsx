@@ -658,9 +658,6 @@ export default function App() {
                 {activeTab}
               </span>
             </h1>
-            <p className="text-[10px] text-bili-pink font-semibold hidden sm:block">
-              100% 纯本地极速多线程备份
-            </p>
           </div>
 
           <div className="flex items-center space-x-3">
