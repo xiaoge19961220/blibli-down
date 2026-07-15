@@ -5,12 +5,13 @@ import {
   Settings, 
   Sparkles,
   UserCheck,
-  UserX
+  UserX,
+  ShieldCheck
 } from 'lucide-react';
 
 interface NavigationProps {
-  activeTab: 'search' | 'extractor' | 'downloads' | 'settings';
-  setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'settings') => void;
+  activeTab: 'search' | 'extractor' | 'downloads' | 'settings' | 'about';
+  setActiveTab: (tab: 'search' | 'extractor' | 'downloads' | 'settings' | 'about') => void;
   activeDownloadsCount: number;
   completedFilesCount: number;
   hasSessdata: boolean;
@@ -54,6 +55,12 @@ export default function Navigation({
       ) : (
         <UserX className="w-4 h-4 text-amber-500 shrink-0" />
       )
+    },
+    { 
+      id: 'about' as const, 
+      label: '协议与隐私', 
+      icon: ShieldCheck,
+      badge: null
     }
   ];
 
