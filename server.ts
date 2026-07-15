@@ -17,7 +17,8 @@ let bili_jct = '';
 let concurrencyLimit = 2;
 let downloadsDir = 'downloads';
 
-let isProd = process.env.NODE_ENV === 'production';
+let isProd = process.env.NODE_ENV === 'production' || 
+             (typeof __filename !== 'undefined' && (__filename.endsWith('server.cjs') || __filename.includes('dist')));
 
 // In Electron environment, resolve paths relative to app's safe/writable directories
 try {
