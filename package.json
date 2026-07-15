@@ -25,7 +25,8 @@
       {
         "provider": "github",
         "owner": "xiaoge19961220",
-        "repo": "blibli-down"
+        "repo": "blibli-down",
+        "releaseType": "release"
       }
     ],
     "directories": {
