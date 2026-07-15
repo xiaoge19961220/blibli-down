@@ -6,6 +6,18 @@ const { spawn } = require('child_process');
 let serverProcess = null;
 let mainWindow = null;
 
+function semverCompare(v1, v2) {
+  const parts1 = String(v1).split('.').map(num => parseInt(num, 10) || 0);
+  const parts2 = String(v2).split('.').map(num => parseInt(num, 10) || 0);
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const a = parts1[i] || 0;
+    const b = parts2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
 function startExpressServer() {
   const isProd = app.isPackaged;
   
@@ -17,11 +29,30 @@ function startExpressServer() {
     
     // Check for hot update server in userData
     const userDataPath = app.getPath('userData');
-    const hotUpdateServerPath = path.join(userDataPath, 'update', 'server.cjs');
+    const hotUpdateDir = path.join(userDataPath, 'update');
+    const hotUpdateServerPath = path.join(hotUpdateDir, 'server.cjs');
+    const hotUpdatePkgPath = path.join(hotUpdateDir, 'package.json');
     
     const pathsToTry = [];
-    if (fs.existsSync(hotUpdateServerPath)) {
-      pathsToTry.push(hotUpdateServerPath);
+    if (fs.existsSync(hotUpdateServerPath) && fs.existsSync(hotUpdatePkgPath)) {
+      try {
+        const hotPkg = JSON.parse(fs.readFileSync(hotUpdatePkgPath, 'utf8'));
+        const appVersion = app.getVersion();
+        const hotVersion = hotPkg.version;
+        // If the packaged app version is >= the hot update version, the hot update is obsolete.
+        // Clear it and use the built-in version!
+        if (semverCompare(appVersion, hotVersion) >= 0) {
+          console.log(`Packaged version ${appVersion} is >= hot update version ${hotVersion}. Clearing hot update cache.`);
+          fs.rmSync(hotUpdateDir, { recursive: true, force: true });
+        } else {
+          pathsToTry.push(hotUpdateServerPath);
+        }
+      } catch (err) {
+        console.warn('Error reading or comparing hot update package.json:', err.message);
+        try {
+          fs.rmSync(hotUpdateDir, { recursive: true, force: true });
+        } catch (e) {}
+      }
     }
     
     pathsToTry.push(
