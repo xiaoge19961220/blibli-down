@@ -41,12 +41,14 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.video"
+      "category": "public.app-category.video",
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "differentialPackage": false
@@ -60,7 +62,8 @@
     "motion": "^12.23.24",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",

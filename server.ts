@@ -1180,6 +1180,16 @@ app.get('/api/update/check', async (req, res) => {
 
     const apiRes = await fetch('https://api.github.com/repos/xiaoge19961220/blibli-down/releases', { headers });
     if (!apiRes.ok) {
+      if (apiRes.status === 403) {
+        return res.status(403).json({
+          error: `GitHub API 访问受限 (403 Forbidden/Rate Limit):
+由于在线网页预览环境部署在云端(Cloud Run)，其出口IP是和全球其他用户共享的，极易触发 GitHub 对未授权请求的 60次/小时 速率限制。
+【如何解决】：
+1. 推荐在本地直接打包运行桌面端(Electron)应用，本地运行走您自家的住宅 IP，绝不会触发此限制。
+2. 或者是您可以在 AI Studio Settings 的 Secrets 环境变量设置中，添加一个 \`GITHUB_TOKEN\` (个人的 GitHub 访问令牌)，保存后即可完美绕过限流。`,
+          currentVersion
+        });
+      }
       return res.status(apiRes.status).json({ error: `GitHub API 访问失败 (${apiRes.status})`, currentVersion });
     }
     const releases = await apiRes.json() as any[];
