@@ -35,7 +35,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build App & Generate Binaries
         shell: bash
