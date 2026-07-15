@@ -17,10 +17,15 @@ let bili_jct = '';
 let concurrencyLimit = 2;
 let downloadsDir = 'downloads';
 
+let isProd = process.env.NODE_ENV === 'production';
+
 // In Electron environment, resolve paths relative to app's safe/writable directories
 try {
   const { app: electronApp } = require('electron');
   if (electronApp) {
+    if (electronApp.isPackaged) {
+      isProd = true;
+    }
     const userDataPath = electronApp.getPath('userData');
     CONFIG_PATH = path.join(userDataPath, 'config.json');
     
@@ -1354,7 +1359,7 @@ app.post('/api/update/cancel', (req, res) => {
 // --- INTEGRATE VITE FOR HOT PREVIEW ---
 
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1362,7 +1367,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // In production, server.cjs is bundled inside the dist directory itself.
+    // So __dirname points to the dist directory.
+    const distPath = __dirname;
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

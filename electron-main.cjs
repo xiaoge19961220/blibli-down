@@ -9,6 +9,7 @@ function startExpressServer() {
   const isProd = app.isPackaged;
   
   if (isProd) {
+    process.env.NODE_ENV = 'production';
     // In packaged app, we directly require dist/server.cjs inside Electron's main thread.
     // This avoids needing a separate Node.js installation on the user's computer and handles ASAR seamlessly!
     let serverLoaded = false;
